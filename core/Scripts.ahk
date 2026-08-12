@@ -372,7 +372,8 @@ DeleteValueInArray(value, array){
 
 GAME_WINDOW_TITLES := [
     "地下城与勇士：创新世纪",
-    "次元对决"
+    "次元对决",
+    "地下城与勇士"
 ]
 
 FindDNFGameWindowTitle() {
