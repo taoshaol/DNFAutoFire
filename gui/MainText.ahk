@@ -16,6 +16,7 @@ global MainText := Map(
     "QuickSwitchHotkey", "快速切换热键",
     "Setting", "软件设置",
     "AutoPresets", "自动识别",
+    "LongZhan", "龙战识别",
     "Start", "启动连发",
     "FeatureSection", "其他功能",
     "LvRen", "旅人自动流星",

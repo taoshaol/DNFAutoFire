@@ -147,12 +147,15 @@ StartAutoFire(){
         _AutoFireThreads.Push(SubProcessThread("MainAutoFire", nowSelectPreset))
     }
     StartEx(nowSelectPreset)
-    if (_AutoFireThreads.Length = 0) {
+    longZhanReady := LongZhan_IsReady()
+    if (_AutoFireThreads.Length = 0 && !longZhanReady) {
         try AutoPresets_OnSessionStopped()
+        try LongZhan_OnSessionStopped()
         SetTrayRunningIcon(false)
         return false
     }
     try AutoPresets_OnSessionStarted()
+    try LongZhan_OnSessionStarted()
     SetTrayRunningIcon(true)
     ShowTip("连发已启动")
     return true
@@ -182,6 +185,7 @@ StartEx(presetName := ""){
 StopAutoFire(){
     global _AutoFireThreads
     try AutoPresets_OnSessionStopped()
+    try LongZhan_OnSessionStopped()
     AutoFireThreads_StopAll()
     _AutoFireThreads := []
     GlobalPause_SetPaused(false)
@@ -395,6 +399,75 @@ ActivateDNFBeforeTip() {
     }
 }
 
+ShowTipIsWindowCloaked(hwnd) {
+    if !hwnd {
+        return false
+    }
+    buf := Buffer(4, 0)
+    try {
+        if DllCall("dwmapi\DwmGetWindowAttribute", "ptr", hwnd, "int", 14, "ptr", buf, "int", 4) {
+            return false
+        }
+    } catch {
+        return false
+    }
+    return NumGet(buf, 0, "uint") != 0
+}
+
+ShowTipIsGameShown(title := "") {
+    if (title = "") {
+        title := FindDNFGameWindowTitle()
+    }
+    if (title = "") {
+        return false
+    }
+    hwnd := 0
+    try hwnd := WinExist(title)
+    catch {
+        return false
+    }
+    if !hwnd {
+        return false
+    }
+    if !DllCall("IsWindowVisible", "ptr", hwnd, "int") {
+        return false
+    }
+    try {
+        if (WinGetMinMax(title) = -1) {
+            return false
+        }
+    } catch {
+        return false
+    }
+    if ShowTipIsWindowCloaked(hwnd) {
+        return false
+    }
+    try {
+        WinGetClientPos(&cx, &cy, &cw, &ch, title)
+    } catch {
+        return false
+    }
+    return cw >= 50 && ch >= 50
+}
+
+ShowTipDesktopPos(tipW, tipH, marginX, marginY) {
+    MonitorGetWorkArea(MonitorGetPrimary(), &wl, &wt, &wr, &wb)
+    return Map("x", wr - tipW - marginX, "y", wb - tipH - marginY)
+}
+
+ShowTipGamePos(title, tipW, tipH, marginX, marginY) {
+    WinGetClientPos(&cx, &cy, &cw, &ch, title)
+    tipX := cx + cw - tipW - marginX
+    tipY := cy + ch - tipH - marginY
+    if (tipX < cx)
+        tipX := cx + marginX
+    if (tipY < cy)
+        tipY := cy + marginY
+    return Map("x", tipX, "y", tipY)
+}
+
+global gShowTipGui := ""
+
 ShowTip(text, activateGame := true) {
     try SetTimer(ShowTipDisplay, 0)
     try SetTimer(CloseTip, 0)
@@ -407,47 +480,90 @@ ShowTipDisplay() {
     global __ShowTipPendingText
     global __ShowTipActivateGame
     text := __ShowTipPendingText
-    if __ShowTipActivateGame {
+    title := FindDNFGameWindowTitle()
+    gameShown := ShowTipIsGameShown(title)
+    if __ShowTipActivateGame && gameShown {
         try ActivateDNFBeforeTip()
+    }
+    if ShowTipShowOverlay(text, gameShown ? title : "") {
+        SetTimer(CloseTip, -1000)
+        return
     }
     marginX := 16
     marginY := 16
-    tipH := 24
+    tipH := 48
     tipW := ShowTipEstimateWidth(text)
+    pos := gameShown ? ShowTipGamePos(title, tipW, tipH, marginX, marginY) : ShowTipDesktopPos(tipW, tipH, marginX, marginY)
     prevToolTipCoordMode := CoordMode("ToolTip", "Screen")
     try {
-        title := FindDNFGameWindowTitle()
-        if title {
-            try {
-                WinGetClientPos(&cx, &cy, &cw, &ch, title)
-                tipX := cx + cw - tipW - marginX
-                tipY := cy + ch - tipH - marginY
-                if (tipX < cx)
-                    tipX := cx + marginX
-                if (tipY < cy)
-                    tipY := cy + marginY
-                ToolTip(text, tipX, tipY)
-            } catch {
-                ToolTip(text)
-            }
-        } else {
-            ToolTip(text)
-        }
+        ToolTip(text, pos["x"], pos["y"])
+    } catch {
+        ToolTip(text)
     } finally {
         CoordMode("ToolTip", prevToolTipCoordMode)
     }
     SetTimer(CloseTip, -1000)
 }
 
-ShowTipEstimateWidth(text) {
-    w := 20
-    Loop Parse text {
-        w += (Ord(A_LoopField) > 127) ? 15 : 8
+ShowTipShowOverlay(text, title) {
+    global gShowTipGui
+    try {
+        if IsObject(gShowTipGui) {
+            gShowTipGui.Destroy()
+            gShowTipGui := ""
+        }
+    } catch {
+        gShowTipGui := ""
     }
-    return Max(w, 64)
+    try {
+        gShowTipGui := Gui("+AlwaysOnTop -Caption +ToolWindow +Border -DPIScale +E0x08000000 +E0x20")
+        gShowTipGui.BackColor := "FFFFFF"
+        gShowTipGui.MarginX := 20
+        gShowTipGui.MarginY := 12
+        fontName := "Microsoft YaHei UI"
+        if IsSet(UiTheme) && IsObject(UiTheme) && UiTheme.Has("FontName") {
+            fontName := UiTheme["FontName"]
+        }
+        gShowTipGui.SetFont("s18 c000000", fontName)
+        gShowTipGui.Add("Text", "xm ym BackgroundTrans c000000", text)
+        gShowTipGui.Show("Hide AutoSize")
+        gShowTipGui.GetPos(, , &tipW, &tipH)
+        marginX := 16
+        marginY := 16
+        pos := (title != "" && ShowTipIsGameShown(title))
+            ? ShowTipGamePos(title, tipW, tipH, marginX, marginY)
+            : ShowTipDesktopPos(tipW, tipH, marginX, marginY)
+        gShowTipGui.Show("x" pos["x"] " y" pos["y"] " NoActivate")
+        try WinSetAlwaysOnTop(true, "ahk_id " gShowTipGui.Hwnd)
+        try DllCall("SetWindowPos", "ptr", gShowTipGui.Hwnd, "ptr", -1, "int", 0, "int", 0, "int", 0, "int", 0, "uint", 0x0013)
+        return true
+    } catch {
+        try {
+            if IsObject(gShowTipGui) {
+                gShowTipGui.Destroy()
+            }
+        } catch {
+        }
+        gShowTipGui := ""
+        return false
+    }
 }
 
-CloseTip(){
+ShowTipEstimateWidth(text) {
+    w := 40
+    Loop Parse text {
+        w += (Ord(A_LoopField) > 127) ? 30 : 16
+    }
+    return Max(w, 128)
+}
+
+CloseTip() {
+    global gShowTipGui
+    try {
+        if IsObject(gShowTipGui) {
+            gShowTipGui.Hide()
+        }
+    }
     ToolTip()
 }
 

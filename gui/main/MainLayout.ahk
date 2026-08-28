@@ -3,7 +3,7 @@
 class MainLayout {
     static StandardMargin() => 16
     static GuiWidth() => MainKeyLayoutData.KeyboardWidth() + 32
-    static GuiHeight() => this.BottomY() + 216
+    static GuiHeight() => this.BottomY() + 248
     static ButtonColumnX() => this.GuiWidth() - this.StandardMargin() - this.ButtonColumnWidth()
     static ButtonColumnWidth() => 96
     ; 与参考版一致：键盘区 + 顶部说明一行（主键连发间隔在下方「配置设置」右栏）
@@ -47,10 +47,18 @@ class MainLayout {
     static ExRightLinkWidth() => 84
 
     static ActionButtonWidth() => this.ButtonColumnWidth()
-    static ActionButtonHeight() => 60
-    static ActionButtonYTop() => this.BottomY() + 6
-    static ActionButtonYMiddle() => this.BottomY() + 72
-    static ActionButtonYBottom() => this.GuiHeight() - this.StandardMargin() - this.ActionButtonHeight()
+    static ActionButtonCount() => 4
+    static ActionButtonGap() => 6
+    static ActionColumnTop() => this.BottomY() + 6
+    static ActionColumnBottom() => this.GuiHeight() - this.StandardMargin()
+    static ActionButtonHeight() {
+        n := this.ActionButtonCount()
+        avail := this.ActionColumnBottom() - this.ActionColumnTop()
+        return Floor((avail - this.ActionButtonGap() * (n - 1)) / n)
+    }
+    static ActionButtonY(index) {
+        return this.ActionColumnTop() + (index - 1) * (this.ActionButtonHeight() + this.ActionButtonGap())
+    }
 }
 
 class SettingLayout {

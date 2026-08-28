@@ -105,9 +105,11 @@ OnIpcRevealMain(wParam, lParam, msg, hwnd) {
 #Include ./lib/GdipUiHelpers.ahk
 #Include ./lib/ToggleGdip.ahk
 #Include ./core/AutoPresets.ahk
+#Include ./core/LongZhan.ahk
 #Include ./gui/MainText.ahk
 #Include ./gui/exText.ahk
 #Include ./gui/AutoPresetsText.ahk
+#Include ./gui/LongZhanText.ahk
 #Include ./lib/ui/Theme.ahk
 #Include ./lib/ui/Layout.ahk
 #Include ./lib/ui/Controls.ahk
@@ -117,8 +119,10 @@ OnIpcRevealMain(wParam, lParam, msg, hwnd) {
 #Include ./gui/main/MainLayout.ahk
 #Include ./gui/ex/ExLayout.ahk
 #Include ./gui/AutoPresets/AutoPresetsLayout.ahk
+#Include ./gui/LongZhan/LongZhanLayout.ahk
 #Include ./gui/main/Main.ahk
 #Include ./gui/AutoPresets/AutoPresets.ahk
+#Include ./gui/LongZhan/LongZhan.ahk
 #Include ./gui/main/QuickSwitch.ahk
 #Include ./gui/main/Setting.ahk
 #Include ./gui/ex/LvRen.ahk

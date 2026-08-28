@@ -264,11 +264,15 @@ PresetRegionPickOpen(kind := "skill") {
     PresetRegionPickLayoutHint(gAutoPresetsRegionPickGui, 0, 200, 90)
     hwnd := gAutoPresetsRegionPickGui.Hwnd
     if (kind = "dungeon") {
-        r := ParseAutoPresetDungeonRegion()
+        r := AutoPresets_ResolveRegion(ParseAutoPresetDungeonRegion())
+    } else if (kind = "longzhan") {
+        stored := LongZhan_ParseRegion()
+        r := (IsObject(stored) && stored.Has("mode") && stored["mode"] = "clientRatio")
+            ? AutoPresets_ResolveRegion(stored)
+            : LongZhan_DefaultRegion()
     } else {
-        r := ParseAutoPresetRegion()
+        r := AutoPresets_ResolveRegion(ParseAutoPresetRegion())
     }
-    r := AutoPresets_ResolveRegion(r)
     if r.Has("w") {
         PresetRegionPickSetOuterFromClientScreen(hwnd, r["x"], r["y"], r["w"], r["h"])
     } else {
@@ -371,6 +375,8 @@ PresetRegionPickOk(*) {
     try {
         if (kind = "dungeon") {
             SaveAutoPresetDungeonRegion(x, y, w, h)
+        } else if (kind = "longzhan") {
+            LongZhan_SaveRegion(x, y, w, h)
         } else {
             SaveAutoPresetRegion(x, y, w, h)
         }
@@ -378,7 +384,11 @@ PresetRegionPickOk(*) {
         MsgBox(e.Message,, "Icon!")
         return
     }
-    try AutoPresetsAfterRegionPick(kind)
+    if (kind = "longzhan") {
+        try LongZhanAfterRegionPick()
+    } else {
+        try AutoPresetsAfterRegionPick(kind)
+    }
     PresetRegionPickClose()
 }
 

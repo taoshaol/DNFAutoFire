@@ -168,9 +168,10 @@ MainBuildActionButtons() {
     global gMainGui, gMainCtrls
     x := MainLayout.ButtonColumnX(), w := MainLayout.ActionButtonWidth(), h := MainLayout.ActionButtonHeight()
     for item in [
-        ["MainSetting", MainText["Setting"], MainSetting, MainLayout.ActionButtonYTop(), "secondary"],
-        ["MainOpenAutoPresets", MainText["AutoPresets"], ShowGuiAutoPresets, MainLayout.ActionButtonYMiddle(), "secondary"],
-        ["MainStart", MainText["Start"], MainStart, MainLayout.ActionButtonYBottom(), "primary"]
+        ["MainSetting", MainText["Setting"], MainSetting, MainLayout.ActionButtonY(1), "secondary"],
+        ["MainOpenAutoPresets", MainText["AutoPresets"], ShowGuiAutoPresets, MainLayout.ActionButtonY(2), "secondary"],
+        ["MainOpenLongZhan", MainText["LongZhan"], ShowGuiLongZhan, MainLayout.ActionButtonY(3), "secondary"],
+        ["MainStart", MainText["Start"], MainStart, MainLayout.ActionButtonY(4), "primary"]
     ] {
         UiButton(gMainCtrls, gMainGui, item[1], UiRect(x, item[4], w, h), item[2], item[3], item[5])
     }

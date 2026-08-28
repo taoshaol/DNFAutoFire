@@ -361,6 +361,7 @@ CreateBlankPreset(presetName) {
     SavePreset(presetName, "AutoRunPauseHotkey", "")
     SavePreset(presetName, "AutoFireKeyIntervals", "")
     SavePreset(presetName, "AutoFireKeyDelays", "")
+    SavePreset(presetName, "LongZhanSkillKey", "")
 }
 
 RenamePreset(oldPresetName, newPresetName) {
