@@ -43,25 +43,8 @@ DeletePreset(presetsName){
     presetsName := NormalizePresetName(presetsName)
     path := ConfigIniPath()
     IniDelete(path, "预设:" presetsName)
-    ; 连带删除所有一键连招子节
-    srcPrefix := "预设:" presetsName ".Combo."
-    srcPrefixLen := StrLen(srcPrefix)
-    sections := ""
-    try sections := IniRead(path)
-    catch {
-        return
-    }
-    for sec in StrSplit(sections, "`n", "`r") {
-        sec := Trim(sec)
-        if (SubStr(sec, 1, srcPrefixLen) != srcPrefix) {
-            continue
-        }
-        tail := SubStr(sec, srcPrefixLen + 1)
-        if !RegExMatch(tail, "^[1-9][0-9]*$") {
-            continue
-        }
-        try IniDelete(path, sec)
-    }
+    CopyOrDeletePresetChildKind(presetsName, "", "Combo", true)
+    CopyOrDeletePresetChildKind(presetsName, "", "MultiKey", true)
 }
 
 ; 保存预设的连发按键
@@ -237,8 +220,8 @@ LoadAllPreset(){
         if (SubStr(sec, 1, 3) != "预设:") {
             continue
         }
-        ; 一键连招子节形如 [预设:职业名.Combo.N]，不计入预设列表
-        if InStr(sec, ".Combo.") {
+        ; 一键连招/多键并发子节形如 [预设:职业名.Combo.N]、[预设:职业名.MultiKey.N]，不计入预设列表
+        if (InStr(sec, ".Combo.") || InStr(sec, ".MultiKey.")) {
             continue
         }
         presetList.Push(SubStr(sec, 4))
@@ -268,6 +251,8 @@ _CreateDefaultConfigIni() {
     SaveConfig("SettingSubprocessErrorLog", false)
     SaveConfig("SettingCloseToTray", false)
     SaveConfig("SettingGlobalPauseHotkey", "F11")
+    SaveConfig("AutoPresetMatchStrict", 100)
+    SaveConfig("AutoPresetRecognizeSeconds", 60)
     SaveLastPreset(DEFAULT_PRESET_NAME)
     CreateBlankPreset(DEFAULT_PRESET_NAME)
 }
@@ -321,10 +306,31 @@ ClonePreset(sourcePresetName, targetPresetName) {
     ; 复制主节
     config := IniRead(path, "预设:" sourcePresetName)
     IniWrite(config, path, "预设:" targetPresetName)
-    ; 连带复制所有一键连招子节 [预设:源.Combo.N] → [预设:目标.Combo.N]
-    srcPrefix := "预设:" sourcePresetName ".Combo."
+    CopyOrDeletePresetChildKind(sourcePresetName, targetPresetName, "Combo", false)
+    CopyOrDeletePresetChildKind(sourcePresetName, targetPresetName, "MultiKey", false)
+}
+
+CopyOrDeletePresetChildKind(sourcePresetName, targetPresetName, kind, deleteOnly) {
+    path := ConfigIniPath()
+    if (kind = "MultiKey") {
+        for idx in MultiKeyListProfileIndices(sourcePresetName) {
+            sec := MultiKeyProfileChildSection(sourcePresetName, idx)
+            if !deleteOnly {
+                body := IniRead(path, sec)
+                IniWrite(body, path, MultiKeyProfileChildSection(targetPresetName, idx))
+            } else {
+                try IniDelete(path, sec)
+            }
+        }
+        return
+    }
+    srcPrefix := "预设:" NormalizePresetName(sourcePresetName) "." kind "."
     srcPrefixLen := StrLen(srcPrefix)
-    sections := IniRead(path)
+    sections := ""
+    try sections := IniRead(path)
+    catch {
+        return
+    }
     for sec in StrSplit(sections, "`n", "`r") {
         sec := Trim(sec)
         if (SubStr(sec, 1, srcPrefixLen) != srcPrefix) {
@@ -334,8 +340,12 @@ ClonePreset(sourcePresetName, targetPresetName) {
         if !RegExMatch(tail, "^[1-9][0-9]*$") {
             continue
         }
-        body := IniRead(path, sec)
-        IniWrite(body, path, "预设:" targetPresetName ".Combo." tail)
+        if !deleteOnly {
+            body := IniRead(path, sec)
+            IniWrite(body, path, "预设:" NormalizePresetName(targetPresetName) "." kind "." tail)
+        } else {
+            try IniDelete(path, sec)
+        }
     }
 }
 
@@ -350,6 +360,8 @@ CreateBlankPreset(presetName) {
     SavePreset(presetName, "XiuLuoState", false)
     SavePreset(presetName, "AutoRunState", false)
     SavePreset(presetName, "ComboState", false)
+    SavePreset(presetName, "MultiKeyState", false)
+    SavePreset(presetName, "MultiKeyCount", 0)
     SavePreset(presetName, "XiuLuoTriggerKey", "")
     SavePreset(presetName, "XiuLuoXKey", "X")
     SavePreset(presetName, "XiuLuoWaveKey1", "1")
@@ -375,22 +387,9 @@ RenamePreset(oldPresetName, newPresetName) {
     config := IniRead(path, "预设:" oldPresetName)
     IniWrite(config, path, "预设:" newPresetName)
     IniDelete(path, "预设:" oldPresetName)
-    ; 连带重命名所有一键连招子节
-    srcPrefix := "预设:" oldPresetName ".Combo."
-    srcPrefixLen := StrLen(srcPrefix)
-    sections := IniRead(path)
-    for sec in StrSplit(sections, "`n", "`r") {
-        sec := Trim(sec)
-        if (SubStr(sec, 1, srcPrefixLen) != srcPrefix) {
-            continue
-        }
-        tail := SubStr(sec, srcPrefixLen + 1)
-        if !RegExMatch(tail, "^[1-9][0-9]*$") {
-            continue
-        }
-        body := IniRead(path, sec)
-        IniWrite(body, path, "预设:" newPresetName ".Combo." tail)
-        IniDelete(path, sec)
-    }
+    CopyOrDeletePresetChildKind(oldPresetName, newPresetName, "Combo", false)
+    CopyOrDeletePresetChildKind(oldPresetName, newPresetName, "MultiKey", false)
+    CopyOrDeletePresetChildKind(oldPresetName, "", "Combo", true)
+    CopyOrDeletePresetChildKind(oldPresetName, "", "MultiKey", true)
     return true
 }

@@ -1,25 +1,43 @@
 #Requires AutoHotkey v2.0
 
-; 自动识别配置：搜图匹配地下城与技能栏参考图后切换预设
+; 自动识别配置：搜图匹配技能栏参考图后切换预设
 
 class AutoPresets {
     static StartDelayMs := 200
-    static RetryIntervalMs := 200
-    static MaxRetryAttempts := 300
-    static SkillImageVariation := 80
-    static DungeonImageVariation := 20
+    static FastIntervalMs := 500
+    static ChatIntervalMs := 200
+    static RelaxedVariation := 160
+    static RelaxedScaledExtra := 70
+    static RelaxedNearPx := 8
+    static RelaxedJitterPx := 3
+    static RelaxedExpandRatio := 0.08
+    static RelaxedExpandMinX := 8
+    static RelaxedExpandMinY := 6
+    static StrictVariation := 120
+    static StrictScaledExtra := 40
+    static StrictNearPx := 4
+    static StrictJitterPx := 0
+    static StrictExpandRatio := 0.05
+    static StrictExpandMinX := 6
+    static StrictExpandMinY := 4
+    static ScaleInterpBicubic := 7
+    static ScaleInterpNearest := 5
     static RegionCornerRadius := 12
     static RegionMaskRgb := "White"
-    static SearchExpandRatio := 0.05
-    static SearchExpandMinX := 6
-    static SearchExpandMinY := 4
-    static _retryTimer := false
-    static _startTimer := false
+    static ChatImageVariation := 50
+    static ChatOpenConfirmTicks := 3
+    static ChatCloseConfirmTicks := 3
+    static _skillTimer := false
+    static _fastUntilTick := 0
+    static _chatTimer := false
+    static _chatHitStreak := 0
+    static _chatMissStreak := 0
     static _registeredEsc := false
     static _registeredCustom := false
     static _lastCustomHotkey := ""
     static _sessionId := 0
-    static _sequenceId := 0
+    static _scaledNeedleCache := Map()
+    static _scaledNeedleSeq := 0
 }
 
 ; 是否开启「自动识别」（全局，config.ini [设置]）
@@ -33,6 +51,75 @@ AutoPresets_CoerceIniBool(raw) {
     }
     s := StrLower(Trim(String(raw)))
     return (s = "1" || s = "true" || s = "yes" || s = "on")
+}
+
+AutoPresets_MatchStrictDefault() => 100
+
+AutoPresets_ClampMatchStrict(raw) {
+    n := 0
+    try n := Integer(Trim(String(raw)))
+    catch {
+        n := AutoPresets_MatchStrictDefault()
+    }
+    if (n < 0) {
+        return 0
+    }
+    if (n > 100) {
+        return 100
+    }
+    return n
+}
+
+AutoPresets_LoadMatchStrict() {
+    return AutoPresets_ClampMatchStrict(LoadConfig("AutoPresetMatchStrict", AutoPresets_MatchStrictDefault()))
+}
+
+AutoPresets_RecognizeSecondsDefault() => 60
+
+AutoPresets_ClampRecognizeSeconds(raw) {
+    n := 0
+    try n := Integer(Trim(String(raw)))
+    catch {
+        n := AutoPresets_RecognizeSecondsDefault()
+    }
+    if (n < 1) {
+        return 1
+    }
+    if (n > 600) {
+        return 600
+    }
+    return n
+}
+
+AutoPresets_LoadRecognizeSeconds() {
+    return AutoPresets_ClampRecognizeSeconds(LoadConfig("AutoPresetRecognizeSeconds", AutoPresets_RecognizeSecondsDefault()))
+}
+
+AutoPresets_LoadRecognizeDurationMs() {
+    return AutoPresets_LoadRecognizeSeconds() * 1000
+}
+
+AutoPresets_LerpInt(relaxed, strict, t) {
+    return Round(relaxed + (strict - relaxed) * t / 100)
+}
+
+AutoPresets_LerpNum(relaxed, strict, t) {
+    return relaxed + (strict - relaxed) * t / 100
+}
+
+AutoPresets_MatchParams() {
+    t := AutoPresets_LoadMatchStrict()
+    return Map(
+        "variation", AutoPresets_LerpInt(AutoPresets.RelaxedVariation, AutoPresets.StrictVariation, t),
+        "scaledExtra", AutoPresets_LerpInt(AutoPresets.RelaxedScaledExtra, AutoPresets.StrictScaledExtra, t),
+        "nearPx", AutoPresets_LerpInt(AutoPresets.RelaxedNearPx, AutoPresets.StrictNearPx, t),
+        "jitterPx", AutoPresets_LerpInt(AutoPresets.RelaxedJitterPx, AutoPresets.StrictJitterPx, t),
+        "expandRatio", AutoPresets_LerpNum(AutoPresets.RelaxedExpandRatio, AutoPresets.StrictExpandRatio, t),
+        "expandMinX", AutoPresets_LerpInt(AutoPresets.RelaxedExpandMinX, AutoPresets.StrictExpandMinX, t),
+        "expandMinY", AutoPresets_LerpInt(AutoPresets.RelaxedExpandMinY, AutoPresets.StrictExpandMinY, t),
+        "useNearest", t < 100,
+        "nearExclusive", t >= 100
+    )
 }
 
 AutoPresetsAssetDir() => A_ScriptDir "\assets\preset-recognition"
@@ -67,6 +154,186 @@ AutoPresetsResolutionKey(client := "") {
         return ""
     }
     return client["w"] "x" client["h"]
+}
+
+AutoPresets_ParseResolutionKey(key, &w, &h) {
+    if !RegExMatch(Trim(key), "^(\d+)x(\d+)$", &m) {
+        return false
+    }
+    w := Integer(m[1])
+    h := Integer(m[2])
+    return w > 0 && h > 0
+}
+
+AutoPresets_ResolutionDistance(keyA, keyB) {
+    if !AutoPresets_ParseResolutionKey(keyA, &aw, &ah) || !AutoPresets_ParseResolutionKey(keyB, &bw, &bh) {
+        return 999999
+    }
+    return Abs(aw - bw) + Abs(ah - bh)
+}
+
+AutoPresets_SortResolutionKeys(keys, currentKey) {
+    if (keys.Length < 2) {
+        return keys
+    }
+    sorted := keys.Clone()
+    loop sorted.Length - 1 {
+        loop sorted.Length - A_Index {
+            i := A_Index
+            if (AutoPresets_ResolutionDistance(sorted[i], currentKey) > AutoPresets_ResolutionDistance(sorted[i + 1], currentKey)) {
+                tmp := sorted[i]
+                sorted[i] := sorted[i + 1]
+                sorted[i + 1] := tmp
+            }
+        }
+    }
+    return sorted
+}
+
+AutoPresets_SplitNearFarResolutionKeys(keys, currentKey) {
+    nearKeys := []
+    farKeys := []
+    for key in AutoPresets_SortResolutionKeys(keys, currentKey) {
+        if (AutoPresets_ResolutionDistance(key, currentKey) <= AutoPresets_MatchParams()["nearPx"]) {
+            nearKeys.Push(key)
+        } else {
+            farKeys.Push(key)
+        }
+    }
+    return Map("near", nearKeys, "far", farKeys)
+}
+
+AutoPresets_ListSkillResolutionKeys() {
+    keys := []
+    root := AutoPresetsSkillIconDir()
+    if !DirExist(root) {
+        return keys
+    }
+    Loop Files root "\*", "D" {
+        key := AutoPresetsSkillResolutionKey(A_LoopFileName)
+        if (key = "") {
+            continue
+        }
+        hasPng := false
+        Loop Files A_LoopFileFullPath "\*.png", "R" {
+            hasPng := true
+            break
+        }
+        if hasPng {
+            keys.Push(key)
+        }
+    }
+    return keys
+}
+
+AutoPresets_DiscoverLegacyResolutionKeys() {
+    keys := []
+    seen := Map()
+    for key in AutoPresets_ListSkillResolutionKeys() {
+        if (key = "" || seen.Has(key)) {
+            continue
+        }
+        seen[key] := true
+        keys.Push(key)
+    }
+    for path in AutoPresetsChatIconPaths() {
+        key := AutoPresets_PngResolutionKey(path)
+        if (key = "" || seen.Has(key)) {
+            continue
+        }
+        seen[key] := true
+        keys.Push(key)
+    }
+    return keys
+}
+
+AutoPresets_ParseResolutionKeys(raw) {
+    keys := []
+    seen := Map()
+    raw := Trim(raw)
+    if (raw = "" || raw = "-") {
+        return keys
+    }
+    for part in StrSplit(raw, "|") {
+        key := AutoPresetsSkillResolutionKey(Trim(part))
+        if (key = "" || seen.Has(key)) {
+            continue
+        }
+        seen[key] := true
+        keys.Push(key)
+    }
+    return keys
+}
+
+AutoPresets_SaveResolutionKeys(keys) {
+    parts := []
+    seen := Map()
+    for key in keys {
+        k := AutoPresetsSkillResolutionKey(key)
+        if (k = "" || seen.Has(k)) {
+            continue
+        }
+        seen[k] := true
+        parts.Push(k)
+    }
+    if (parts.Length = 0) {
+        SaveConfig("AutoPresetResolutions", "-")
+        return
+    }
+    text := parts[1]
+    loop parts.Length - 1 {
+        text .= "|" parts[A_Index + 1]
+    }
+    SaveConfig("AutoPresetResolutions", text)
+}
+
+AutoPresets_LoadResolutionKeys() {
+    raw := LoadConfig("AutoPresetResolutions", "")
+    if (Trim(raw) = "") {
+        keys := AutoPresets_DiscoverLegacyResolutionKeys()
+        AutoPresets_SaveResolutionKeys(keys)
+        return keys
+    }
+    return AutoPresets_ParseResolutionKeys(raw)
+}
+
+AutoPresets_ListKnownResolutionKeys() {
+    return AutoPresets_LoadResolutionKeys()
+}
+
+AutoPresets_AddResolutionKey(key) {
+    key := AutoPresetsSkillResolutionKey(key)
+    if (key = "") {
+        throw Error("未找到 DNF 游戏窗口，无法截取分辨率。")
+    }
+    keys := AutoPresets_LoadResolutionKeys()
+    for existing in keys {
+        if (existing = key) {
+            return key
+        }
+    }
+    keys.Push(key)
+    AutoPresets_SaveResolutionKeys(keys)
+    return key
+}
+
+AutoPresets_RemoveResolutionKey(key) {
+    key := AutoPresetsSkillResolutionKey(key)
+    if (key = "") {
+        return
+    }
+    kept := []
+    for existing in AutoPresets_LoadResolutionKeys() {
+        if (existing != key) {
+            kept.Push(existing)
+        }
+    }
+    AutoPresets_SaveResolutionKeys(kept)
+}
+
+AutoPresets_PngResolutionKey(path) {
+    SplitPath(path, &fileName)
+    return AutoPresetsSkillResolutionKey(RegExReplace(fileName, "i)\.png$", ""))
 }
 
 AutoPresetsSkillResolutionKey(resolutionKey := false) {
@@ -360,19 +627,16 @@ AutoPresets_OnPresetDeleted(presetName) {
     }
 }
 
-AutoPresetsDungeonIconDir() => AutoPresetsAssetDir() "\dungeon"
+AutoPresetsChatIconDir() => AutoPresetsAssetDir() "\chat"
 
-AutoPresetsDungeonIconCurrentPath() {
-    resKey := AutoPresetsResolutionKey()
-    if (resKey = "") {
-        throw Error("未找到 DNF 游戏窗口，无法按分辨率保存地下城识别图。")
-    }
-    return AutoPresetsDungeonIconDir() "\" resKey ".png"
+AutoPresetsChatIconPathForResolution(resolutionKey) {
+    key := AutoPresetsSkillResolutionKey(resolutionKey)
+    return key = "" ? "" : AutoPresetsChatIconDir() "\" key ".png"
 }
 
-AutoPresetsDungeonIconPaths() {
+AutoPresetsChatIconPaths() {
     paths := []
-    dir := AutoPresetsDungeonIconDir()
+    dir := AutoPresetsChatIconDir()
     if !DirExist(dir) {
         return paths
     }
@@ -385,18 +649,18 @@ AutoPresetsDungeonIconPaths() {
     return paths
 }
 
-AutoPresetsDungeonIconPreviewPath() {
-    try {
-        p := AutoPresetsDungeonIconCurrentPath()
-        if FileExist(p) {
-            return p
-        }
-    } catch {
+AutoPresets_HasAnyChatPng() {
+    return AutoPresetsChatIconPaths().Length > 0
+}
+
+AutoPresets_DefaultChatRegion() {
+    w := 280
+    h := 48
+    client := AutoPresets_GetGameClientRect()
+    if IsObject(client) {
+        return Map("x", client["x"] + 16, "y", client["y"] + client["h"] - h - 72, "w", w, "h", h)
     }
-    for p in AutoPresetsDungeonIconPaths() {
-        return p
-    }
-    return ""
+    return Map("x", 16, "y", A_ScreenHeight - h - 72, "w", w, "h", h)
 }
 
 AutoPresets_DefaultRegion() {
@@ -429,8 +693,9 @@ AutoPresets_ExpandSearchRegion(region, client := "") {
     if !IsObject(region) || !region.Has("w") {
         return region
     }
-    mx := Max(AutoPresets.SearchExpandMinX, Round(region["w"] * AutoPresets.SearchExpandRatio))
-    my := Max(AutoPresets.SearchExpandMinY, Round(region["h"] * AutoPresets.SearchExpandRatio))
+    params := AutoPresets_MatchParams()
+    mx := Max(params["expandMinX"], Round(region["w"] * params["expandRatio"]))
+    my := Max(params["expandMinY"], Round(region["h"] * params["expandRatio"]))
     x := region["x"] - mx
     y := region["y"] - my
     w := region["w"] + mx * 2
@@ -509,16 +774,12 @@ SaveAutoPresetRegionByKey(configKey, x, y, w, h) {
         Round(rx, 6) "|" Round(ry, 6) "|" Round(rw, 6) "|" Round(rh, 6))
 }
 
-ParseAutoPresetDungeonRegion() {
-    return ParseAutoPresetRegionByKey("AutoPresetDungeonRegion")
+ParseAutoPresetChatRegion() {
+    return ParseAutoPresetRegionByKey("AutoPresetChatRegion")
 }
 
-SaveAutoPresetDungeonRegion(x, y, w, h) {
-    SaveAutoPresetRegionByKey("AutoPresetDungeonRegion", x, y, w, h)
-}
-
-AutoPresets_HasAnyDungeonPng() {
-    return AutoPresetsDungeonIconPaths().Length > 0
+SaveAutoPresetChatRegion(x, y, w, h) {
+    SaveAutoPresetRegionByKey("AutoPresetChatRegion", x, y, w, h)
 }
 
 AutoPresets_GameActive() {
@@ -548,6 +809,285 @@ AutoPresets_RegionCornerRadius(w, h) {
 
 AutoPresets_ImageSearchPrefix(variation) {
     return "*" variation " *Trans" AutoPresets.RegionMaskRgb " "
+}
+
+AutoPresets_GetImageSize(path, &w, &h) {
+    w := 0
+    h := 0
+    if !FileExist(path) {
+        return false
+    }
+    _AutoPresetsGdipStartup()
+    pBitmap := 0
+    if DllCall("gdiplus\GdipCreateBitmapFromFile", "wstr", path, "ptr*", &pBitmap := 0) != 0 || !pBitmap {
+        return false
+    }
+    try {
+        DllCall("gdiplus\GdipGetImageWidth", "ptr", pBitmap, "uint*", &w := 0)
+        DllCall("gdiplus\GdipGetImageHeight", "ptr", pBitmap, "uint*", &h := 0)
+        return w > 0 && h > 0
+    } finally {
+        DllCall("gdiplus\GdipDisposeImage", "ptr", pBitmap)
+    }
+}
+
+AutoPresets_FitSearchToNeedle(x1, y1, x2, y2, needleW, needleH, client := "") {
+    needW := Max(1, needleW)
+    needH := Max(1, needleH)
+    curW := x2 - x1 + 1
+    curH := y2 - y1 + 1
+    if (curW < needW) {
+        extra := needW - curW
+        x1 -= extra // 2
+        x2 := x1 + needW - 1
+    }
+    if (curH < needH) {
+        extra := needH - curH
+        y1 -= extra // 2
+        y2 := y1 + needH - 1
+    }
+    if IsObject(client) {
+        left := client["x"]
+        top := client["y"]
+        right := client["x"] + client["w"] - 1
+        bottom := client["y"] + client["h"] - 1
+        if (x2 - x1 + 1 > client["w"]) {
+            x1 := left
+            x2 := right
+        } else {
+            if (x1 < left) {
+                x2 += left - x1
+                x1 := left
+            }
+            if (x2 > right) {
+                x1 -= x2 - right
+                x2 := right
+                if (x1 < left) {
+                    x1 := left
+                }
+            }
+        }
+        if (y2 - y1 + 1 > client["h"]) {
+            y1 := top
+            y2 := bottom
+        } else {
+            if (y1 < top) {
+                y2 += top - y1
+                y1 := top
+            }
+            if (y2 > bottom) {
+                y1 -= y2 - bottom
+                y2 := bottom
+                if (y1 < top) {
+                    y1 := top
+                }
+            }
+        }
+    }
+    return Map("x1", x1, "y1", y1, "x2", x2, "y2", y2)
+}
+
+AutoPresets_ImageSearchInRegion(path, region, variation) {
+    if !FileExist(path) || !IsObject(region) {
+        return false
+    }
+    x1 := region["x"]
+    y1 := region["y"]
+    x2 := x1 + region["w"] - 1
+    y2 := y1 + region["h"] - 1
+    needle := AutoPresets_ImageSearchPrefix(variation) . path
+    try {
+        if ImageSearch(&_icx, &_icy, x1, y1, x2, y2, needle) {
+            return true
+        }
+        return false
+    } catch TargetError {
+        if !AutoPresets_GetImageSize(path, &iw, &ih) {
+            return false
+        }
+        client := region.Has("client") ? region["client"] : ""
+        fitted := AutoPresets_FitSearchToNeedle(x1, y1, x2, y2, iw, ih, client)
+        try {
+            return ImageSearch(&_icx, &_icy, fitted["x1"], fitted["y1"], fitted["x2"], fitted["y2"], needle)
+        } catch TargetError {
+            return false
+        }
+    }
+}
+
+AutoPresets_ScaledNeedleDir() {
+    return A_Temp "\DAF_ap_needles"
+}
+
+AutoPresets_ClearScaledNeedleCache() {
+    AutoPresets._scaledNeedleCache := Map()
+    AutoPresets._scaledNeedleSeq := 0
+    dir := AutoPresets_ScaledNeedleDir()
+    if DirExist(dir) {
+        try DirDelete(dir, true)
+    }
+}
+
+AutoPresets_ScaleImageToFile(srcPath, destPath, newW, newH, interpMode := 7) {
+    if !FileExist(srcPath) || newW < 1 || newH < 1 {
+        return false
+    }
+    parentDir := RegExReplace(destPath, "\\[^\\]+$", "")
+    if (parentDir != "" && parentDir != destPath && !DirExist(parentDir)) {
+        DirCreate(parentDir)
+    }
+    _AutoPresetsGdipStartup()
+    pSrc := 0
+    if DllCall("gdiplus\GdipCreateBitmapFromFile", "wstr", srcPath, "ptr*", &pSrc := 0) != 0 || !pSrc {
+        return false
+    }
+    pDst := 0
+    if DllCall("gdiplus\GdipCreateBitmapFromScan0", "int", newW, "int", newH, "int", newW * 4, "int", GdipUiHelpers.PixelFormat32bppARGB, "ptr", 0, "ptr*", &pDst := 0) != 0 || !pDst {
+        DllCall("gdiplus\GdipDisposeImage", "ptr", pSrc)
+        return false
+    }
+    gr := 0
+    ok := false
+    try {
+        if DllCall("gdiplus\GdipGetImageGraphicsContext", "ptr", pDst, "ptr*", &gr := 0) != 0 || !gr {
+            return false
+        }
+        DllCall("gdiplus\GdipGraphicsClear", "ptr", gr, "uint", 0xFFFFFFFF)
+        DllCall("gdiplus\GdipSetInterpolationMode", "ptr", gr, "int", interpMode)
+        DllCall("gdiplus\GdipSetPixelOffsetMode", "ptr", gr, "int", 4)
+        DllCall("gdiplus\GdipSetSmoothingMode", "ptr", gr, "int", 4)
+        if DllCall("gdiplus\GdipDrawImageRectI", "ptr", gr, "ptr", pSrc, "int", 0, "int", 0, "int", newW, "int", newH) != 0 {
+            return false
+        }
+        _AutoPresetsGdipSaveGpBitmapToPng(pDst, destPath)
+        ok := FileExist(destPath)
+    } finally {
+        if gr {
+            DllCall("gdiplus\GdipDeleteGraphics", "ptr", gr)
+        }
+        DllCall("gdiplus\GdipDisposeImage", "ptr", pDst)
+        DllCall("gdiplus\GdipDisposeImage", "ptr", pSrc)
+    }
+    return ok
+}
+
+AutoPresets_AddNeedleSize(list, seen, w, h) {
+    w := Max(1, Round(w))
+    h := Max(1, Round(h))
+    k := w "x" h
+    if seen.Has(k) {
+        return
+    }
+    seen[k] := true
+    list.Push(Map("w", w, "h", h))
+}
+
+AutoPresets_NeedleSizeCandidates(iw, ih, sw, sh, cw, ch) {
+    tw := Max(1, Round(iw * cw / sw))
+    th := Max(1, Round(ih * ch / sh))
+    out := []
+    seen := Map()
+    AutoPresets_AddNeedleSize(out, seen, tw, th)
+    jitter := AutoPresets_MatchParams()["jitterPx"]
+    loop jitter {
+        d := A_Index
+        AutoPresets_AddNeedleSize(out, seen, tw - d, th - d)
+        AutoPresets_AddNeedleSize(out, seen, tw + d, th + d)
+    }
+    return out
+}
+
+AutoPresets_CachedScaledNeedle(srcPath, tw, th, interpMode) {
+    cacheKey := srcPath "`t" tw "x" th "`t" interpMode
+    if AutoPresets._scaledNeedleCache.Has(cacheKey) {
+        cached := AutoPresets._scaledNeedleCache[cacheKey]
+        if FileExist(cached) {
+            return cached
+        }
+    }
+    AutoPresets._scaledNeedleSeq += 1
+    dest := AutoPresets_ScaledNeedleDir() "\n" AutoPresets._scaledNeedleSeq "_" tw "x" th "_i" interpMode ".png"
+    try {
+        if !AutoPresets_ScaleImageToFile(srcPath, dest, tw, th, interpMode) {
+            return ""
+        }
+    } catch {
+        return ""
+    }
+    AutoPresets._scaledNeedleCache[cacheKey] := dest
+    return dest
+}
+
+AutoPresets_PrepareNeedles(srcPath, srcResKey, curResKey) {
+    needles := []
+    if !FileExist(srcPath) {
+        return needles
+    }
+    if (srcResKey = curResKey) {
+        needles.Push(srcPath)
+        return needles
+    }
+    params := AutoPresets_MatchParams()
+    if (params["nearExclusive"] && AutoPresets_ResolutionDistance(srcResKey, curResKey) <= params["nearPx"]) {
+        needles.Push(srcPath)
+        return needles
+    }
+    if !AutoPresets_ParseResolutionKey(srcResKey, &sw, &sh) || !AutoPresets_ParseResolutionKey(curResKey, &cw, &ch) {
+        needles.Push(srcPath)
+        return needles
+    }
+    if !AutoPresets_GetImageSize(srcPath, &iw, &ih) {
+        return needles
+    }
+    sizes := AutoPresets_NeedleSizeCandidates(iw, ih, sw, sh, cw, ch)
+    if (sizes.Length = 0) {
+        return needles
+    }
+    primaryW := sizes[1]["w"]
+    primaryH := sizes[1]["h"]
+    for sz in sizes {
+        tw := sz["w"]
+        th := sz["h"]
+        if (tw = iw && th = ih) {
+            needles.Push(srcPath)
+            continue
+        }
+        dest := AutoPresets_CachedScaledNeedle(srcPath, tw, th, AutoPresets.ScaleInterpBicubic)
+        if (dest != "") {
+            needles.Push(dest)
+        }
+        if (params["useNearest"] && tw = primaryW && th = primaryH) {
+            nn := AutoPresets_CachedScaledNeedle(srcPath, tw, th, AutoPresets.ScaleInterpNearest)
+            if (nn != "" && nn != dest) {
+                needles.Push(nn)
+            }
+        }
+    }
+    return needles
+}
+
+AutoPresets_SearchPresetsWithKeys(resKeys, curKey, region, variation, scaleNeedles) {
+    for presetName in LoadAllPreset() {
+        for resKey in resKeys {
+            for item in AutoPresetsSkillIcons_Load(presetName, resKey) {
+                path := item["path"]
+                if !FileExist(path) {
+                    continue
+                }
+                if scaleNeedles {
+                    needles := AutoPresets_PrepareNeedles(path, resKey, curKey)
+                    for needlePath in needles {
+                        if AutoPresets_ImageSearchInRegion(needlePath, region, variation) {
+                            return presetName
+                        }
+                    }
+                } else if AutoPresets_ImageSearchInRegion(path, region, variation) {
+                    return presetName
+                }
+            }
+        }
+    }
+    return ""
 }
 
 AutoPresetsCaptureRegionToPng(path, x, y, w, h) {
@@ -748,40 +1288,72 @@ AutoPresetsSkillIcon_RenderFitPreviewToFile(srcPath, boxW, boxH, destPath) {
     return true
 }
 
-AutoPresetsDungeonIcon_UpdateCurrent() {
-    r := AutoPresets_ResolveRegion(ParseAutoPresetDungeonRegion())
-    path := AutoPresetsDungeonIconCurrentPath()
+AutoPresetsChatIcon_UpdateForResolution(resolutionKey) {
+    key := AutoPresetsSkillResolutionKey(resolutionKey)
+    if (key = "") {
+        throw Error("当前没有选中的分辨率。")
+    }
+    stored := ParseAutoPresetChatRegion()
+    if (IsObject(stored) && stored.Has("mode") && stored["mode"] = "clientRatio") {
+        r := AutoPresets_ResolveRegion(stored)
+    } else {
+        r := AutoPresets_DefaultChatRegion()
+        SaveAutoPresetChatRegion(r["x"], r["y"], r["w"], r["h"])
+    }
+    path := AutoPresetsChatIconPathForResolution(key)
     AutoPresetsCaptureRegionToPng(path, r["x"], r["y"], r["w"], r["h"])
     return path
 }
 
-AutoPresetsDungeonIconMatches() {
-    r := AutoPresets_ResolveRegion(ParseAutoPresetDungeonRegion(), true)
-    paths := AutoPresetsDungeonIconPaths()
+AutoPresets_PngPathsMatchRegion(paths, region, variation) {
+    client := AutoPresets_GetGameClientRect()
+    if !IsObject(client) {
+        return false
+    }
+    curKey := AutoPresetsResolutionKey(client)
+    r := AutoPresets_ResolveRegion(region, true)
     if (paths.Length = 0) {
         return false
     }
-    x1 := r["x"]
-    y1 := r["y"]
-    x2 := x1 + r["w"] - 1
-    y2 := y1 + r["h"] - 1
-    variation := AutoPresets.DungeonImageVariation
-    optPrefix := AutoPresets_ImageSearchPrefix(variation)
+    keys := []
+    pathByKey := Map()
+    for path in paths {
+        key := AutoPresets_PngResolutionKey(path)
+        if (key = "" || pathByKey.Has(key)) {
+            continue
+        }
+        keys.Push(key)
+        pathByKey[key] := path
+    }
+    split := AutoPresets_SplitNearFarResolutionKeys(keys, curKey)
     prevPixel := CoordMode("Pixel", "Screen")
     try {
-        for path in paths {
-            needle := optPrefix . path
-            try {
-                if ImageSearch(&_icx, &_icy, x1, y1, x2, y2, needle) {
+        for key in split["near"] {
+            if AutoPresets_ImageSearchInRegion(pathByKey[key], r, variation) {
+                return true
+            }
+        }
+        scaledVar := variation + AutoPresets_MatchParams()["scaledExtra"]
+        for key in AutoPresets_SortResolutionKeys(keys, curKey) {
+            needles := AutoPresets_PrepareNeedles(pathByKey[key], key, curKey)
+            for needle in needles {
+                if (needle != "" && AutoPresets_ImageSearchInRegion(needle, r, scaledVar)) {
                     return true
                 }
-            } catch TargetError {
             }
         }
         return false
     } finally {
         CoordMode("Pixel", prevPixel)
     }
+}
+
+AutoPresetsChatIconMatches() {
+    stored := ParseAutoPresetChatRegion()
+    if !IsObject(stored) || !stored.Has("mode") || stored["mode"] != "clientRatio" {
+        return false
+    }
+    return AutoPresets_PngPathsMatchRegion(AutoPresetsChatIconPaths(), stored, AutoPresets.ChatImageVariation)
 }
 
 AutoPresetsSkillIcon_UpdateForPreset(presetName, skillId := "", resolutionKey := false) {
@@ -803,66 +1375,126 @@ AutoPresetsSkillIcon_UpdateForPreset(presetName, skillId := "", resolutionKey :=
 }
 
 AutoPresetsFindPresetBySkillIcon() {
+    client := AutoPresets_GetGameClientRect()
+    if !IsObject(client) {
+        return ""
+    }
+    curKey := AutoPresetsResolutionKey(client)
     r := AutoPresets_ResolveRegion(ParseAutoPresetRegion(), true)
-    x1 := r["x"]
-    y1 := r["y"]
-    x2 := x1 + r["w"] - 1
-    y2 := y1 + r["h"] - 1
-    variation := AutoPresets.SkillImageVariation
-    optPrefix := AutoPresets_ImageSearchPrefix(variation)
+    keys := AutoPresets_SortResolutionKeys(AutoPresets_ListSkillResolutionKeys(), curKey)
+    if (keys.Length = 0) {
+        return ""
+    }
+    params := AutoPresets_MatchParams()
     prevPixel := CoordMode("Pixel", "Screen")
     try {
-        for presetName in LoadAllPreset() {
-            for item in AutoPresetsSkillIcons_Load(presetName) {
-                path := item["path"]
-                if !FileExist(path) {
-                    continue
-                }
-                needle := optPrefix . path
-                try {
-                    if ImageSearch(&_isx, &_isy, x1, y1, x2, y2, needle) {
-                        return presetName
-                    }
-                } catch TargetError {
-                }
+        split := AutoPresets_SplitNearFarResolutionKeys(keys, curKey)
+        if params["nearExclusive"] {
+            if (split["near"].Length > 0) {
+                return AutoPresets_SearchPresetsWithKeys(split["near"], curKey, r, params["variation"], false)
             }
+            if (split["far"].Length > 0) {
+                return AutoPresets_SearchPresetsWithKeys(split["far"], curKey, r, params["variation"] + params["scaledExtra"], true)
+            }
+            return ""
         }
-        return ""
+        found := AutoPresets_SearchPresetsWithKeys(keys, curKey, r, params["variation"], false)
+        if (found != "") {
+            return found
+        }
+        return AutoPresets_SearchPresetsWithKeys(keys, curKey, r, params["variation"] + params["scaledExtra"], true)
     } finally {
         CoordMode("Pixel", prevPixel)
     }
 }
 
-AutoPresets_ClearRetryTimer() {
-    if AutoPresets._retryTimer {
-        try SetTimer(AutoPresets._retryTimer, 0)
-        AutoPresets._retryTimer := false
+AutoPresets_ClearSkillTimer() {
+    if AutoPresets._skillTimer {
+        try SetTimer(AutoPresets._skillTimer, 0)
+        AutoPresets._skillTimer := false
     }
 }
 
-AutoPresets_ClearStartTimer() {
-    if AutoPresets._startTimer {
-        try SetTimer(AutoPresets._startTimer, 0)
-        AutoPresets._startTimer := false
+AutoPresets_StopSkillWatch() {
+    AutoPresets_ClearSkillTimer()
+    AutoPresets._fastUntilTick := 0
+}
+
+AutoPresets_ArmSkillTimer(delayMs) {
+    AutoPresets_ClearSkillTimer()
+    fn := AutoPresets_SkillTick
+    AutoPresets._skillTimer := fn
+    SetTimer(fn, -delayMs)
+}
+
+AutoPresets_RefreshSessionRuntime() {
+    if !AutoPresets_IsSessionRunning() {
+        return
+    }
+    AutoPresets_RegisterSessionHotkeys()
+    if !AutoPresets_LoadEnabledGlobal() {
+        AutoPresets_StopSkillWatch()
     }
 }
 
-AutoPresets_CancelPending() {
-    AutoPresets_ClearRetryTimer()
-    AutoPresets_ClearStartTimer()
+AutoPresets_ClearChatTimer() {
+    if AutoPresets._chatTimer {
+        try SetTimer(AutoPresets._chatTimer, 0)
+        AutoPresets._chatTimer := false
+    }
+}
+
+AutoPresets_ResetChatWatch() {
+    AutoPresets._chatHitStreak := 0
+    AutoPresets._chatMissStreak := 0
+    ChatOpen_SetOpen(false)
+}
+
+AutoPresets_StartChatWatch() {
+    AutoPresets_ClearChatTimer()
+    AutoPresets_ResetChatWatch()
+    if !AutoPresets_IsSessionRunning() {
+        return
+    }
+    if !AutoPresets_HasAnyChatPng() {
+        return
+    }
+    fn := AutoPresets_ChatTick
+    AutoPresets._chatTimer := fn
+    SetTimer(fn, AutoPresets.ChatIntervalMs)
+}
+
+AutoPresets_ChatTick(*) {
+    if !AutoPresets_IsSessionRunning() {
+        AutoPresets_ClearChatTimer()
+        ChatOpen_SetOpen(false)
+        return
+    }
+    if !AutoPresets_GameActive() {
+        return
+    }
+    try {
+        matched := AutoPresetsChatIconMatches()
+    } catch {
+        return
+    }
+    if matched {
+        AutoPresets._chatHitStreak += 1
+        AutoPresets._chatMissStreak := 0
+        if (AutoPresets._chatHitStreak >= AutoPresets.ChatOpenConfirmTicks) {
+            ChatOpen_SetOpen(true)
+        }
+        return
+    }
+    AutoPresets._chatHitStreak := 0
+    AutoPresets._chatMissStreak += 1
+    if (AutoPresets._chatMissStreak >= AutoPresets.ChatCloseConfirmTicks) {
+        ChatOpen_SetOpen(false)
+    }
 }
 
 AutoPresets_CurrentSessionId() {
     return AutoPresets._sessionId
-}
-
-AutoPresets_StartNewSequence() {
-    AutoPresets._sequenceId += 1
-    return AutoPresets._sequenceId
-}
-
-AutoPresets_IsCurrentSequence(sessionId, sequenceId) {
-    return sessionId = AutoPresets._sessionId && sequenceId = AutoPresets._sequenceId
 }
 
 AutoPresets_Trigger(*) {
@@ -870,7 +1502,7 @@ AutoPresets_Trigger(*) {
 }
 
 AutoPresets_Request(requireActive := false) {
-    if !AutoPresets_IsFeatureEnabledForRunningPreset() {
+    if !AutoPresets_LoadEnabledGlobal() {
         return
     }
     if !AutoPresets_IsSessionRunning() {
@@ -879,16 +1511,9 @@ AutoPresets_Request(requireActive := false) {
     if (requireActive && !AutoPresets_GameActive()) {
         return
     }
-    AutoPresets_CancelPending()
-    sessionId := AutoPresets_CurrentSessionId()
-    sequenceId := AutoPresets_StartNewSequence()
-    fn := AutoPresets_Begin.Bind(sessionId, sequenceId, 1)
-    AutoPresets._startTimer := fn
-    SetTimer(fn, -AutoPresets.StartDelayMs)
-}
-
-AutoPresets_IsFeatureEnabledForRunningPreset() {
-    return AutoPresets_LoadEnabledGlobal()
+    AutoPresets._fastUntilTick := A_TickCount + AutoPresets_LoadRecognizeDurationMs()
+    ShowTip(AutoPresetsText["Recognizing"])
+    AutoPresets_ArmSkillTimer(AutoPresets.StartDelayMs)
 }
 
 AutoPresets_HotIfShouldFire(*) {
@@ -901,69 +1526,41 @@ AutoPresets_HotIfShouldFire(*) {
     return WinActive("ahk_group DNF") != 0
 }
 
-AutoPresets_Begin(sessionId, sequenceId, attemptIdx, *) {
-    if !AutoPresets_IsCurrentSequence(sessionId, sequenceId) {
+AutoPresets_SkillTick(*) {
+    sessionId := AutoPresets_CurrentSessionId()
+    if !AutoPresets_LoadEnabledGlobal() || !AutoPresets_IsSessionRunning() {
+        AutoPresets_StopSkillWatch()
         return
     }
-    AutoPresets._startTimer := false
-    if !AutoPresets_IsFeatureEnabledForRunningPreset() {
-        return
-    }
-    if !AutoPresets_IsSessionRunning() {
+    if (AutoPresets._fastUntilTick <= 0 || A_TickCount >= AutoPresets._fastUntilTick) {
+        AutoPresets_StopSkillWatch()
         return
     }
     if AutoPresets_GameActive() {
-        AutoPresets_RunAttempt(sessionId, sequenceId, attemptIdx)
+        try {
+            found := AutoPresetsFindPresetBySkillIcon()
+            current := GetNowSelectPreset()
+            if (found != "" && found != current) {
+                AutoPresets_ApplySwitchOnMain(found)
+                if (sessionId != AutoPresets_CurrentSessionId()) {
+                    return
+                }
+            }
+        } catch {
+        }
+    }
+    if (sessionId != AutoPresets_CurrentSessionId()) {
         return
     }
-    if (attemptIdx >= AutoPresets.MaxRetryAttempts) {
+    if !AutoPresets_LoadEnabledGlobal() || !AutoPresets_IsSessionRunning() {
+        AutoPresets_StopSkillWatch()
         return
     }
-    fn := AutoPresets_Begin.Bind(sessionId, sequenceId, attemptIdx + 1)
-    AutoPresets._startTimer := fn
-    SetTimer(fn, -AutoPresets.RetryIntervalMs)
-}
-
-AutoPresets_ScheduleNextAttempt(sessionId, sequenceId, attemptIdx) {
-    AutoPresets_ClearRetryTimer()
-    if (attemptIdx >= AutoPresets.MaxRetryAttempts) {
+    if (AutoPresets._fastUntilTick <= 0 || A_TickCount >= AutoPresets._fastUntilTick) {
+        AutoPresets_StopSkillWatch()
         return
     }
-    if !AutoPresets_IsCurrentSequence(sessionId, sequenceId) {
-        return
-    }
-    fn := AutoPresets_RunAttempt.Bind(sessionId, sequenceId, attemptIdx + 1)
-    AutoPresets._retryTimer := fn
-    SetTimer(fn, -AutoPresets.RetryIntervalMs)
-}
-
-AutoPresets_RunAttempt(sessionId, sequenceId, attemptIdx) {
-    if !AutoPresets_IsCurrentSequence(sessionId, sequenceId) {
-        return
-    }
-    if !AutoPresets_IsFeatureEnabledForRunningPreset() {
-        AutoPresets_ClearRetryTimer()
-        return
-    }
-    if !AutoPresets_IsSessionRunning() {
-        AutoPresets_ClearRetryTimer()
-        return
-    }
-    if !AutoPresets_GameActive() {
-        AutoPresets_ScheduleNextAttempt(sessionId, sequenceId, attemptIdx)
-        return
-    }
-    if AutoPresets_HasAnyDungeonPng() && AutoPresetsDungeonIconMatches() {
-        AutoPresets_ClearRetryTimer()
-        return
-    }
-
-    found := AutoPresetsFindPresetBySkillIcon()
-    current := GetNowSelectPreset()
-    if (found != "" && found != current) {
-        AutoPresets_ApplySwitchOnMain(found)
-    }
-    AutoPresets_ScheduleNextAttempt(sessionId, sequenceId, attemptIdx)
+    AutoPresets_ArmSkillTimer(AutoPresets.FastIntervalMs)
 }
 
 AutoPresets_ApplySwitchOnMain(presetName) {
@@ -986,7 +1583,6 @@ AutoPresets_IsEscHotkeyStr(hk) {
 }
 
 AutoPresets_DisableSessionHotkeys() {
-    AutoPresets_CancelPending()
     HotIf(AutoPresets_HotIfShouldFire)
     if AutoPresets._registeredEsc {
         try Hotkey("~Esc", "Off")
@@ -1029,18 +1625,17 @@ AutoPresets_RegisterSessionHotkeys() {
 
 AutoPresets_OnSessionStarted() {
     AutoPresets._sessionId += 1
-    AutoPresets._sequenceId += 1
-    AutoPresets_CancelPending()
+    AutoPresets_StopSkillWatch()
+    AutoPresets_ClearScaledNeedleCache()
     AutoPresets_RegisterSessionHotkeys()
-    if !AutoPresets_LoadEnabledGlobal() {
-        return
-    }
-    AutoPresets_Request()
+    AutoPresets_StartChatWatch()
 }
 
 AutoPresets_OnSessionStopped() {
     AutoPresets._sessionId += 1
-    AutoPresets._sequenceId += 1
     AutoPresets_DisableSessionHotkeys()
-    AutoPresets_CancelPending()
+    AutoPresets_StopSkillWatch()
+    AutoPresets_ClearChatTimer()
+    AutoPresets_ResetChatWatch()
+    AutoPresets_ClearScaledNeedleCache()
 }

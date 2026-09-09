@@ -3,7 +3,7 @@
 class MainLayout {
     static StandardMargin() => 16
     static GuiWidth() => MainKeyLayoutData.KeyboardWidth() + 32
-    static GuiHeight() => this.BottomY() + 248
+    static GuiHeight() => this.BottomY() + 282
     static ButtonColumnX() => this.GuiWidth() - this.StandardMargin() - this.ButtonColumnWidth()
     static ButtonColumnWidth() => 96
     ; 与参考版一致：键盘区 + 顶部说明一行（主键连发间隔在下方「配置设置」右栏）

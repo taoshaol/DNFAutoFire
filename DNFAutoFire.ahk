@@ -38,6 +38,7 @@ EnsureConfigInitialized()
 #Include ./core/Scripts.ahk
 #Include ./core/AutoFire.ahk
 #Include ./core/ComboPreset.ahk
+#Include ./core/MultiKeyPreset.ahk
 #Include ./ex/ExActionRuntime.ahk
 
 ; 子进程 /Run=… 仅解析到此为止即进入连发逻辑；主进程在返回后继续加载 GUI 等大段代码
@@ -133,6 +134,7 @@ OnIpcRevealMain(wParam, lParam, msg, hwnd) {
 #Include ./gui/ex/XiuLuo.ahk
 #Include ./gui/ex/AutoRun.ahk
 #Include ./gui/ex/Combo.ahk
+#Include ./gui/ex/MultiKey.ahk
 
 global _AutoFireThreads := []
 global _AutoFireEnableKeys := []

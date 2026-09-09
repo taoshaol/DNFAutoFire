@@ -4,9 +4,10 @@ global gAutoPresetsGui := Gui("-MinimizeBox -MaximizeBox")
 global gAutoPresetsCtrls := Map()
 global gAutoPresetsSelectedPreset := ""
 global gAutoPresetsSelectedSkillId := ""
-global gAutoPresetsSelectedDungeonPath := ""
+global gAutoPresetsSelectedResolution := ""
+global gAutoPresetsSelectedChatPath := ""
 global gAutoPresetsSkillItems := []
-global gAutoPresetsDungeonItems := []
+global gAutoPresetsResolutionKeys := []
 global gAutoPresetsLayout := AutoPresetsLayout.Window()
 
 UiApplyWindow(gAutoPresetsGui)
@@ -24,36 +25,61 @@ rightW := AutoPresetsLayout.RightWidth()
 pvW := AutoPresetsLayout.PreviewWidth()
 pvH := AutoPresetsLayout.PreviewHeight()
 pvY := AutoPresetsLayout.PreviewY()
-DungeonX := AutoPresetsLayout.DungeonX()
-DungeonListX := AutoPresetsLayout.DungeonListX()
-DungeonListW := AutoPresetsLayout.DungeonListWidth()
-DungeonListH := AutoPresetsLayout.DungeonListHeight()
-DungeonPvW := AutoPresetsLayout.DungeonPreviewWidth()
-DungeonPvH := AutoPresetsLayout.DungeonPreviewHeight()
+previewColX := AutoPresetsLayout.PreviewColX()
+resListX := AutoPresetsLayout.ResolutionListX()
+resListW := AutoPresetsLayout.ResolutionListWidth()
+resListH := AutoPresetsLayout.ResolutionListHeight()
+resListY := AutoPresetsLayout.ResolutionListY()
+resCapBtnY := AutoPresetsLayout.ResolutionCaptureBtnY()
+resBtnY := AutoPresetsLayout.ResolutionBtnY()
+chatPvW := AutoPresetsLayout.ChatPreviewWidth()
 rowActionY := AutoPresetsLayout.RowActionY()
 apEnableY := AutoPresetsLayout.EnableY()
 apHotkeyY := AutoPresetsLayout.HotkeyY()
-DungeonY := AutoPresetsLayout.DungeonY()
 pickBtnY := AutoPresetsLayout.PickBtnY()
-DungeonBtnY := AutoPresetsLayout.DungeonBtnY()
+chatY := AutoPresetsLayout.ChatY()
+chatBtnY := AutoPresetsLayout.ChatBtnY()
+chatPvH := AutoPresetsLayout.ChatPreviewHeight()
 lowerY := AutoPresetsLayout.LowerY()
 listY := AutoPresetsLayout.ListY()
 listH := AutoPresetsLayout.ListHeight()
 saveY := AutoPresetsLayout.SaveY()
 
 UiSectionWithHelp(gAutoPresetsGui, gAutoPresetsLayout, marginX, 12, AutoPresetsText["SectionTitle"], AutoPresetsHelp, contentR)
-gAutoPresetsCtrls["AutoPresetsEnableVisible"] := gAutoPresetsGui.Add("CheckBox", UiLayoutRect(gAutoPresetsLayout, marginX, apEnableY, contentR - marginX, 20, "vAutoPresetsEnableVisible"), AutoPresetsText["Enable"])
+gAutoPresetsCtrls["AutoPresetsEnableVisible"] := gAutoPresetsGui.Add("CheckBox", UiLayoutRect(gAutoPresetsLayout, marginX, apEnableY, 128, 20, "vAutoPresetsEnableVisible"), AutoPresetsText["Enable"])
 gAutoPresetsCtrls["AutoPresetsEnableVisible"].OnEvent("Click", AutoPresetsSyncEnableFromUi)
+durSuffixW := 18
+durEditW := 40
+durLabelW := 56
+durSuffixX := contentR - durSuffixW
+durEditX := durSuffixX - 4 - durEditW
+durLabelX := durEditX - 4 - durLabelW
+UiLabel(gAutoPresetsGui, UiLayoutRect(gAutoPresetsLayout, durLabelX, apEnableY, durLabelW, 20), AutoPresetsText["RecognizeDurationPrefix"])
+UiEdit(gAutoPresetsCtrls, gAutoPresetsGui, "AutoPresetRecognizeSeconds", UiLayoutRect(gAutoPresetsLayout, durEditX, apEnableY - 1, durEditW, ExLayout.ControlHeight(), "+Number +Limit3 -E0x200 Border"))
+UiLabel(gAutoPresetsGui, UiLayoutRect(gAutoPresetsLayout, durSuffixX, apEnableY, durSuffixW, 20), AutoPresetsText["RecognizeDurationSuffix"])
 UiLabel(gAutoPresetsGui, UiLayoutRect(gAutoPresetsLayout, marginX, apHotkeyY, 140, 20), AutoPresetsText["ExtraHotkey"])
 UiPressKeyEdit(gAutoPresetsCtrls, gAutoPresetsGui, "AutoPresetHotkey", UiLayoutRect(gAutoPresetsLayout, 144, apHotkeyY, contentR - 144, ExLayout.ControlHeight()))
 
+apStrictY := AutoPresetsLayout.StrictY()
+apStrictLabelW := 72
+apStrictPctW := 40
+apStrictSliderX := marginX + apStrictLabelW + 8
+apStrictSliderW := contentR - apStrictSliderX - apStrictPctW - 4
+UiLabel(gAutoPresetsGui, UiLayoutRect(gAutoPresetsLayout, marginX, apStrictY, apStrictLabelW, 22), AutoPresetsText["MatchStrict"])
+UiAdd(gAutoPresetsCtrls, gAutoPresetsGui, "Slider", UiLayoutRect(gAutoPresetsLayout, apStrictSliderX, apStrictY, apStrictSliderW, 22, "vMatchStrict Range0-100 TickInterval25 ToolTip"), AutoPresets_MatchStrictDefault())
+gAutoPresetsCtrls["MatchStrict"].OnEvent("Change", AutoPresetsMatchStrictOnChange)
+gAutoPresetsCtrls["MatchStrictValue"] := UiLabel(gAutoPresetsGui, UiLayoutRect(gAutoPresetsLayout, contentR - apStrictPctW, apStrictY, apStrictPctW, 22, "+0x2"), AutoPresets_MatchStrictDefault() "%")
+
 UiPlainButton(gAutoPresetsGui, UiLayoutRect(gAutoPresetsLayout, marginX, pickBtnY, (contentR - marginX - 8) // 2, ExLayout.ControlHeight()), AutoPresetsText["PickSkillRegion"], AutoPresetsPickRegion.Bind("skill"), "secondary")
-UiPlainButton(gAutoPresetsGui, UiLayoutRect(gAutoPresetsLayout, marginX + (contentR - marginX + 8) // 2, pickBtnY, (contentR - marginX - 8) // 2, ExLayout.ControlHeight()), AutoPresetsText["PickDungeonRegion"], AutoPresetsPickRegion.Bind("dungeon"), "secondary")
-UiLabel(gAutoPresetsGui, UiLayoutRect(gAutoPresetsLayout, DungeonListX, DungeonY - 24, DungeonListW, 20), AutoPresetsText["DungeonResolutionList"])
-UiListBox(gAutoPresetsCtrls, gAutoPresetsGui, "DungeonResolutionList", UiLayoutRect(gAutoPresetsLayout, DungeonListX, DungeonY, DungeonListW, DungeonListH), AutoPresetsOnDungeonResolutionChange)
-gAutoPresetsCtrls["DungeonPreview"] := gAutoPresetsGui.Add("Picture", UiLayoutRect(gAutoPresetsLayout, DungeonX, DungeonY, DungeonPvW, DungeonPvH), "")
-UiPlainButton(gAutoPresetsGui, UiLayoutRect(gAutoPresetsLayout, DungeonX, DungeonBtnY, (DungeonPvW - 8) // 2, ExLayout.ControlHeight()), AutoPresetsText["CaptureDungeon"], AutoPresetsCaptureDungeonIcon, "secondary")
-UiPlainButton(gAutoPresetsGui, UiLayoutRect(gAutoPresetsLayout, DungeonX + (DungeonPvW + 8) // 2, DungeonBtnY, (DungeonPvW - 8) // 2, ExLayout.ControlHeight()), AutoPresetsText["DeleteDungeon"], AutoPresetsDeleteDungeonIcon, "secondary")
+UiPlainButton(gAutoPresetsGui, UiLayoutRect(gAutoPresetsLayout, marginX + (contentR - marginX + 8) // 2, pickBtnY, (contentR - marginX - 8) // 2, ExLayout.ControlHeight()), AutoPresetsText["PickChatRegion"], AutoPresetsPickRegion.Bind("chat"), "secondary")
+UiLabel(gAutoPresetsGui, UiLayoutRect(gAutoPresetsLayout, resListX, resListY - 24, resListW, 20), AutoPresetsText["ResolutionList"])
+UiListBox(gAutoPresetsCtrls, gAutoPresetsGui, "ResolutionList", UiLayoutRect(gAutoPresetsLayout, resListX, resListY, resListW, resListH), AutoPresetsOnResolutionChange)
+UiPlainButton(gAutoPresetsGui, UiLayoutRect(gAutoPresetsLayout, resListX, resCapBtnY, resListW, ExLayout.ControlHeight()), AutoPresetsText["CaptureResolution"], AutoPresetsCaptureResolution, "secondary")
+UiPlainButton(gAutoPresetsGui, UiLayoutRect(gAutoPresetsLayout, resListX, resBtnY, resListW, ExLayout.ControlHeight()), AutoPresetsText["DeleteResolution"], AutoPresetsDeleteResolution, "secondary")
+UiLabel(gAutoPresetsGui, UiLayoutRect(gAutoPresetsLayout, previewColX, chatY - 20, chatPvW, 20), AutoPresetsText["ChatReference"])
+gAutoPresetsCtrls["ChatPreview"] := gAutoPresetsGui.Add("Picture", UiLayoutRect(gAutoPresetsLayout, previewColX, chatY, chatPvW, chatPvH), "")
+UiPlainButton(gAutoPresetsGui, UiLayoutRect(gAutoPresetsLayout, previewColX, chatBtnY, (chatPvW - 8) // 2, ExLayout.ControlHeight()), AutoPresetsText["CaptureChat"], AutoPresetsCaptureChatIcon, "secondary")
+UiPlainButton(gAutoPresetsGui, UiLayoutRect(gAutoPresetsLayout, previewColX + (chatPvW + 8) // 2, chatBtnY, (chatPvW - 8) // 2, ExLayout.ControlHeight()), AutoPresetsText["DeleteChat"], AutoPresetsDeleteChatIcon, "secondary")
 
 UiLabel(gAutoPresetsGui, UiLayoutRect(gAutoPresetsLayout, marginX, lowerY, listW, 20), AutoPresetsText["PresetList"])
 UiListBox(gAutoPresetsCtrls, gAutoPresetsGui, "AutoPresetPresetList", UiLayoutRect(gAutoPresetsLayout, marginX, listY, listW, listH), AutoPresetsOnPresetListChange)
@@ -73,8 +99,11 @@ AutoPresetsGetCtrl(name) {
 }
 
 AutoPresetsPickRegion(kind, *) {
-    global gAutoPresetsDungeonItems
-    if (gAutoPresetsDungeonItems.Length > 0 && !AutoPresetsConfirmResetRegion()) {
+    if (kind = "chat") {
+        if (AutoPresetsChatIconPaths().Length > 0 && !AutoPresetsConfirmResetRegion()) {
+            return
+        }
+    } else if (AutoPresets_ListSkillResolutionKeys().Length > 0 && !AutoPresetsConfirmResetRegion()) {
         return
     }
     PresetRegionPickOpen(kind)
@@ -111,9 +140,9 @@ AutoPresetsLockSkillPreview(pic) {
     }
 }
 
-AutoPresetsLockDungeonPreview(pic) {
+AutoPresetsLockChatPreview(pic) {
     if IsObject(pic) {
-        pic.Move(AutoPresetsLayout.DungeonX(), AutoPresetsLayout.DungeonY(), AutoPresetsLayout.DungeonPreviewWidth(), AutoPresetsLayout.DungeonPreviewHeight())
+        pic.Move(AutoPresetsLayout.PreviewColX(), AutoPresetsLayout.ChatY(), AutoPresetsLayout.ChatPreviewWidth(), AutoPresetsLayout.ChatPreviewHeight())
     }
 }
 
@@ -156,48 +185,52 @@ AutoPresetsSelectSkillIconById(skillId) {
     AutoPresetsRefreshSkillPreview()
 }
 
-AutoPresetsDungeonPathToResolution(path) {
-    SplitPath(path, &fileName)
-    return RegExReplace(fileName, "\.png$")
-}
-
 AutoPresetsResolveSelectedResolution() {
-    global gAutoPresetsSelectedDungeonPath
-    return gAutoPresetsSelectedDungeonPath = "" ? "" : AutoPresetsDungeonPathToResolution(gAutoPresetsSelectedDungeonPath)
+    global gAutoPresetsSelectedResolution
+    return gAutoPresetsSelectedResolution
 }
 
-AutoPresetsSyncDungeonResolutionList(selectPath := "") {
-    global gAutoPresetsDungeonItems, gAutoPresetsSelectedDungeonPath
-    gAutoPresetsDungeonItems := AutoPresetsDungeonIconPaths()
-    names := []
-    for path in gAutoPresetsDungeonItems {
-        names.Push(AutoPresetsDungeonPathToResolution(path))
-    }
-    listCtrl := AutoPresetsGetCtrl("DungeonResolutionList")
+AutoPresetsSyncResolutionList(selectKey := "") {
+    global gAutoPresetsResolutionKeys, gAutoPresetsSelectedResolution
+    gAutoPresetsResolutionKeys := AutoPresets_SortResolutionKeys(AutoPresets_ListKnownResolutionKeys(), AutoPresetsResolutionKey())
+    listCtrl := AutoPresetsGetCtrl("ResolutionList")
     if !IsObject(listCtrl) {
         return
     }
-    MainSetListBoxFromArray(listCtrl, names)
-    pickPath := selectPath
-    if (pickPath = "") {
-        try {
-            curPath := AutoPresetsDungeonIconCurrentPath()
-            for path in gAutoPresetsDungeonItems {
-                if (path = curPath) {
-                    pickPath := path
-                    break
-                }
+    MainSetListBoxFromArray(listCtrl, gAutoPresetsResolutionKeys)
+    pickKey := ""
+    if (selectKey != "") {
+        for key in gAutoPresetsResolutionKeys {
+            if (key = selectKey) {
+                pickKey := key
+                break
             }
-        } catch {
         }
     }
-    if (pickPath = "" && gAutoPresetsDungeonItems.Length > 0) {
-        pickPath := gAutoPresetsDungeonItems[1]
+    if (pickKey = "") {
+        curKey := AutoPresetsResolutionKey()
+        for key in gAutoPresetsResolutionKeys {
+            if (key = curKey) {
+                pickKey := key
+                break
+            }
+        }
     }
-    gAutoPresetsSelectedDungeonPath := pickPath
+    if (pickKey = "" && gAutoPresetsSelectedResolution != "") {
+        for key in gAutoPresetsResolutionKeys {
+            if (key = gAutoPresetsSelectedResolution) {
+                pickKey := key
+                break
+            }
+        }
+    }
+    if (pickKey = "" && gAutoPresetsResolutionKeys.Length > 0) {
+        pickKey := gAutoPresetsResolutionKeys[1]
+    }
+    gAutoPresetsSelectedResolution := pickKey
     idx := 0
-    loop gAutoPresetsDungeonItems.Length {
-        if (gAutoPresetsDungeonItems[A_Index] = pickPath) {
+    loop gAutoPresetsResolutionKeys.Length {
+        if (gAutoPresetsResolutionKeys[A_Index] = pickKey) {
             idx := A_Index
             break
         }
@@ -205,27 +238,27 @@ AutoPresetsSyncDungeonResolutionList(selectPath := "") {
     if (idx > 0) {
         listCtrl.Value := idx
     }
-    AutoPresetsRefreshDungeonPreview()
     AutoPresetsSyncSkillIconList()
+    AutoPresetsRefreshChatPreview()
 }
 
-AutoPresetsOnDungeonResolutionChange(*) {
-    global gAutoPresetsDungeonItems, gAutoPresetsSelectedDungeonPath
-    listCtrl := AutoPresetsGetCtrl("DungeonResolutionList")
+AutoPresetsOnResolutionChange(*) {
+    global gAutoPresetsResolutionKeys, gAutoPresetsSelectedResolution
+    listCtrl := AutoPresetsGetCtrl("ResolutionList")
     if !IsObject(listCtrl) {
-        gAutoPresetsSelectedDungeonPath := ""
-        AutoPresetsRefreshDungeonPreview()
+        gAutoPresetsSelectedResolution := ""
         AutoPresetsSyncSkillIconList()
+        AutoPresetsRefreshChatPreview()
         return
     }
     idx := listCtrl.Value
-    if (idx >= 1 && idx <= gAutoPresetsDungeonItems.Length) {
-        gAutoPresetsSelectedDungeonPath := gAutoPresetsDungeonItems[idx]
+    if (idx >= 1 && idx <= gAutoPresetsResolutionKeys.Length) {
+        gAutoPresetsSelectedResolution := gAutoPresetsResolutionKeys[idx]
     } else {
-        gAutoPresetsSelectedDungeonPath := ""
+        gAutoPresetsSelectedResolution := ""
     }
-    AutoPresetsRefreshDungeonPreview()
     AutoPresetsSyncSkillIconList()
+    AutoPresetsRefreshChatPreview()
 }
 
 AutoPresetsSyncSkillIconList(selectSkillId := "") {
@@ -382,39 +415,49 @@ AutoPresetsRefreshSkillPreview() {
     }
 }
 
-AutoPresetsRefreshDungeonPreview() {
-    global gAutoPresetsSelectedDungeonPath
-    picT := AutoPresetsGetCtrl("DungeonPreview")
+AutoPresetsRefreshChatPreview() {
+    global gAutoPresetsSelectedChatPath
+    picT := AutoPresetsGetCtrl("ChatPreview")
     if !IsObject(picT) {
         return
     }
     picT.Value := ""
-    AutoPresetsLockDungeonPreview(picT)
-    p := gAutoPresetsSelectedDungeonPath
-    if (p = "") {
-        p := AutoPresetsDungeonIconPreviewPath()
+    AutoPresetsLockChatPreview(picT)
+    p := ""
+    key := AutoPresetsResolveSelectedResolution()
+    if (key != "") {
+        cand := AutoPresetsChatIconPathForResolution(key)
+        if (cand != "" && FileExist(cand)) {
+            p := cand
+        }
     }
-    if (p != "" && FileExist(p)) {
-        tmp := A_Temp "\DAF_dungeon_fit_preview.png"
-        if AutoPresetsSkillIcon_RenderFitPreviewToFile(p, AutoPresetsLayout.DungeonPreviewWidth(), AutoPresetsLayout.DungeonPreviewHeight(), tmp) && FileExist(tmp) {
+    gAutoPresetsSelectedChatPath := p
+    if (p != "") {
+        tmp := A_Temp "\DAF_chat_fit_preview.png"
+        if AutoPresetsSkillIcon_RenderFitPreviewToFile(p, AutoPresetsLayout.ChatPreviewWidth(), AutoPresetsLayout.ChatPreviewHeight(), tmp) && FileExist(tmp) {
             picT.Value := tmp
         } else {
             picT.Value := p
         }
-        AutoPresetsLockDungeonPreview(picT)
+        AutoPresetsLockChatPreview(picT)
     }
 }
 
 AutoPresetsAfterRegionPick(kind) {
     global gAutoPresetsGui, gAutoPresetsSelectedSkillId
     if IsObject(gAutoPresetsGui) && WinExist("ahk_id " gAutoPresetsGui.Hwnd) {
-        AutoPresetsRefreshDungeonPreview()
+        AutoPresetsRefreshChatPreview()
         if (kind = "skill") {
             item := AutoPresetsResolveSelectedSkillItem()
             if IsObject(item) {
                 AutoPresetsSkillIcon_UpdateForPreset(AutoPresetsResolveSelectedPreset(), item["id"], AutoPresetsResolveSelectedResolution())
             }
             AutoPresetsSyncSkillIconList(gAutoPresetsSelectedSkillId)
+        } else if (kind = "chat") {
+            try AutoPresetsApplyCapturedChat(AutoPresetsChatIcon_UpdateForResolution(AutoPresetsResolveSelectedResolution()))
+            catch Error as e {
+                MsgBox(e.Message,, "Icon!")
+            }
         }
     }
 }
@@ -429,7 +472,48 @@ AutoPresetsLoadToGui() {
     }
     AutoPresetsGetCtrl("AutoPresetHotkey").Text := hk
     AutoPresetsRefreshEnableCheckbox()
-    AutoPresetsSyncDungeonResolutionList()
+    AutoPresetsApplyMatchStrictUi(AutoPresets_LoadMatchStrict())
+    AutoPresetsGetCtrl("AutoPresetRecognizeSeconds").Text := AutoPresets_LoadRecognizeSeconds()
+    AutoPresetsSyncResolutionList()
+    AutoPresetsRefreshChatPreview()
+}
+
+AutoPresetsApplyMatchStrictUi(v) {
+    v := AutoPresets_ClampMatchStrict(v)
+    slider := AutoPresetsGetCtrl("MatchStrict")
+    if IsObject(slider) {
+        slider.Value := v
+    }
+    lbl := AutoPresetsGetCtrl("MatchStrictValue")
+    if IsObject(lbl) {
+        lbl.Text := v "%"
+    }
+}
+
+AutoPresetsSaveMatchStrictFromUi() {
+    slider := AutoPresetsGetCtrl("MatchStrict")
+    v := AutoPresets_MatchStrictDefault()
+    if IsObject(slider) {
+        v := AutoPresets_ClampMatchStrict(slider.Value)
+    }
+    AutoPresetsApplyMatchStrictUi(v)
+    SaveConfig("AutoPresetMatchStrict", v)
+    return v
+}
+
+AutoPresetsMatchStrictOnChange(*) {
+    AutoPresetsSaveMatchStrictFromUi()
+}
+
+AutoPresetsSaveRecognizeSecondsFromUi() {
+    ctrl := AutoPresetsGetCtrl("AutoPresetRecognizeSeconds")
+    v := AutoPresets_RecognizeSecondsDefault()
+    if IsObject(ctrl) {
+        v := AutoPresets_ClampRecognizeSeconds(ctrl.Text)
+        ctrl.Text := v
+    }
+    SaveConfig("AutoPresetRecognizeSeconds", v)
+    return v
 }
 
 AutoPresetsSyncEnableFromUi(*) {
@@ -439,9 +523,7 @@ AutoPresetsSyncEnableFromUi(*) {
     if IsObject(m) {
         m.Value := v
     }
-    if AutoPresets_IsSessionRunning() {
-        AutoPresets_RegisterSessionHotkeys()
-    }
+    AutoPresets_RefreshSessionRuntime()
 }
 
 ShowGuiAutoPresets(*) {
@@ -480,10 +562,10 @@ AutoPresetsGuiSave(*) {
     if IsObject(m) {
         m.Value := v
     }
+    AutoPresetsSaveMatchStrictFromUi()
+    AutoPresetsSaveRecognizeSecondsFromUi()
     HideGuiAutoPresets()
-    if AutoPresets_IsSessionRunning() {
-        AutoPresets_RegisterSessionHotkeys()
-    }
+    AutoPresets_RefreshSessionRuntime()
 }
 
 AutoPresetsHelp(*) {
@@ -493,7 +575,8 @@ AutoPresetsHelp(*) {
 AutoPresetsUpdateSkillIcon(*) {
     PresetRegionPickCommitIfOpen()
     try {
-        added := AutoPresetsSkillIcon_Add(AutoPresetsResolveSelectedPreset(), AutoPresetsResolveSelectedResolution())
+        resKey := AutoPresetsResolveSelectedResolution()
+        added := AutoPresetsSkillIcon_Add(AutoPresetsResolveSelectedPreset(), resKey)
         AutoPresetsSyncSkillIconList(added["id"])
     } catch Error as e {
         MsgBox(e.Message,, "Icon!")
@@ -506,7 +589,8 @@ AutoPresetsDeleteSkillIcon(*) {
     if (name = "" || !IsObject(item)) {
         return
     }
-    AutoPresetsSkillIcon_Delete(name, item["id"], AutoPresetsResolveSelectedResolution())
+    resKey := AutoPresetsResolveSelectedResolution()
+    AutoPresetsSkillIcon_Delete(name, item["id"], resKey)
     AutoPresetsSyncSkillIconList()
 }
 
@@ -530,27 +614,75 @@ AutoPresetsRenameSkillIcon(*) {
     AutoPresetsSyncSkillIconList(item["id"])
 }
 
-AutoPresetsCaptureDungeonIcon(*) {
-    PresetRegionPickCommitIfOpen()
+AutoPresetsCaptureResolution(*) {
     try {
-        path := AutoPresetsDungeonIcon_UpdateCurrent()
-        AutoPresetsSyncDungeonResolutionList(path)
+        key := AutoPresetsResolutionKey()
+        if (key = "") {
+            throw Error("未找到 DNF 游戏窗口，无法截取分辨率。")
+        }
+        AutoPresets_AddResolutionKey(key)
+        AutoPresetsSyncResolutionList(key)
     } catch Error as e {
         MsgBox(e.Message,, "Icon!")
     }
 }
 
-AutoPresetsDeleteDungeonIcon(*) {
-    global gAutoPresetsSelectedDungeonPath
-    path := gAutoPresetsSelectedDungeonPath
+AutoPresetsDeleteResolution(*) {
+    global gAutoPresetsSelectedResolution
+    key := gAutoPresetsSelectedResolution
+    if (key = "") {
+        return
+    }
+    AutoPresets_RemoveResolutionKey(key)
+    dir := AutoPresetsSkillResolutionDir(key)
+    if (dir != "" && DirExist(dir)) {
+        try DirDelete(dir, true)
+    }
+    chatPath := AutoPresetsChatIconPathForResolution(key)
+    if (chatPath != "" && FileExist(chatPath)) {
+        try FileDelete(chatPath)
+    }
+    gAutoPresetsSelectedResolution := ""
+    AutoPresetsSyncResolutionList()
+}
+
+AutoPresetsApplyCapturedChat(path) {
+    global gAutoPresetsSelectedChatPath
+    gAutoPresetsSelectedChatPath := path
+    AutoPresetsRefreshChatPreview()
+    if AutoPresets_IsSessionRunning() {
+        AutoPresets_StartChatWatch()
+    }
+}
+
+AutoPresetsCaptureChatIcon(*) {
+    PresetRegionPickCommitIfOpen()
+    try {
+        AutoPresetsApplyCapturedChat(AutoPresetsChatIcon_UpdateForResolution(AutoPresetsResolveSelectedResolution()))
+    } catch Error as e {
+        MsgBox(e.Message,, "Icon!")
+    }
+}
+
+AutoPresetsDeleteChatIcon(*) {
+    global gAutoPresetsSelectedChatPath, gAutoPresetsSelectedResolution
+    path := ""
+    key := gAutoPresetsSelectedResolution
+    if (key != "") {
+        path := AutoPresetsChatIconPathForResolution(key)
+    }
+    if (path = "" || !FileExist(path)) {
+        path := gAutoPresetsSelectedChatPath
+    }
     if (path = "" || !FileExist(path)) {
         return
     }
     try FileDelete(path)
-    resolutionKey := AutoPresetsDungeonPathToResolution(path)
-    try DirDelete(AutoPresetsSkillResolutionDir(resolutionKey), true)
-    gAutoPresetsSelectedDungeonPath := ""
-    AutoPresetsSyncDungeonResolutionList()
+    gAutoPresetsSelectedChatPath := ""
+    AutoPresetsRefreshChatPreview()
+    if AutoPresets_IsSessionRunning() {
+        AutoPresets_StartChatWatch()
+    }
 }
 
 #Include ./AutoPresetsRegionPick.ahk

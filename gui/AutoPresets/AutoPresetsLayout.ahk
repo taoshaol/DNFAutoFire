@@ -19,28 +19,35 @@ class AutoPresetsLayout {
     static PreviewHeight() => 120
     static PreviewY() => this.ListY()
 
-    ; 中部列表与预览
-    static DungeonListWidth() => 120
-    static DungeonPreviewGap() => 52
-    static DungeonX() => this.MarginX() + this.DungeonListWidth() + this.DungeonPreviewGap()
-    static DungeonPreviewWidth() => 120
-    static DungeonPreviewHeight() => 120
-    static DungeonListX() => this.MarginX()
-    static DungeonListY() => this.DungeonY()
-    static DungeonListHeight() => 160
+    ; 中部分辨率列表与聊天预览
+    static ResolutionListWidth() => 120
+    static PreviewColGap() => 52
+    static PreviewColX() => this.MarginX() + this.ResolutionListWidth() + this.PreviewColGap()
+    static ChatPreviewWidth() => 120
+    static ChatPreviewHeight() => 48
+    static ResolutionListX() => this.MarginX()
+    static ResolutionListHeight() => 160
     static RowActionY() => this.PreviewY() + this.PreviewHeight() + 12
 
-    ; 顶部启用开关、热键输入与框选按钮
+    ; 顶部启用开关、热键、严格标准与框选按钮
     static EnableY() => 44
     static HotkeyY() => 78
-    static PickBtnY() => this.HotkeyY() + ExLayout.ControlHeight() + 8
+    static StrictY() => this.HotkeyY() + ExLayout.ControlHeight() + 10
+    static PickBtnY() => this.StrictY() + 26
 
     ; 中部、下部和保存区的纵向位置
     static MiddleY() => this.PickBtnY() + ExLayout.ControlHeight() + 16
     static MiddlePreviewY() => this.MiddleY() + 16
-    static DungeonY() => this.MiddlePreviewY()
-    static DungeonBtnY() => this.DungeonY() + this.DungeonPreviewHeight() + 12
-    static LowerY() => this.DungeonBtnY() + ExLayout.ControlHeight() + 4
+    static ResolutionListY() => this.MiddlePreviewY()
+    static ResolutionCaptureBtnY() => this.ResolutionListY() + this.ResolutionListHeight() + 8
+    static ResolutionBtnY() => this.ResolutionCaptureBtnY() + ExLayout.ControlHeight() + 8
+    static ChatY() => this.MiddlePreviewY()
+    static ChatBtnY() => this.ChatY() + this.ChatPreviewHeight() + 8
+    static LowerY() {
+        leftBottom := this.ResolutionBtnY() + ExLayout.ControlHeight()
+        rightBottom := this.ChatBtnY() + ExLayout.ControlHeight()
+        return (leftBottom > rightBottom ? leftBottom : rightBottom) + 8
+    }
     static ListY() => this.LowerY() + 24
     static ListHeight() => 160
     static SaveY() => this.ListY() + this.ListHeight() + 8

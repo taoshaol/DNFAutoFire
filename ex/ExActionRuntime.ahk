@@ -1,7 +1,7 @@
 #Requires AutoHotkey v2.0
 
 ; EX 输入动作运行时：统一承载战法、旅人、关羽、宠物技能、剑宗、修罗、自动奔跑和一键连招。
-; 主键连发仍由 MainAutoFire 独立子进程承载，避免高频主连发被扩展动作影响。
+; 主键连发与多键并发由 MainAutoFire 独立子进程承载，避免高频主连发被扩展动作影响。
 
 class ExActionRuntime {
     static _ctx := 0
@@ -72,7 +72,7 @@ class ExActionRuntime {
         for rule in ctx.rules {
             if IsObject(rule.scIDs) {
                 for scID in rule.scIDs {
-                    ExAction_MarkHotkey(hotkeys, scID, false)
+                    ExAction_MarkHotkey(hotkeys, scID, HasProp(rule, "blockOriginal") && rule.blockOriginal)
                 }
             }
         }
@@ -88,9 +88,7 @@ class ExActionRuntime {
                 HotIf(ExAction_BlockHotkeyActive)
                 Hotkey("$" scID, ObjBindMethod(ExActionRuntime, "ActionDownByScID", scID), "On")
                 HotIf()
-                HotIfWinActive("ahk_group DNF")
                 Hotkey("~$" scID " up", ObjBindMethod(ExActionRuntime, "ActionUpByScID", scID), "On")
-                HotIf()
             } else {
                 HotIfWinActive("ahk_group DNF")
                 Hotkey("~$" scID, ObjBindMethod(ExActionRuntime, "ActionDownByScID", scID), "On")
@@ -121,6 +119,7 @@ class ExActionRuntime {
                 HotIf(ExAction_BlockHotkeyActive)
                 try Hotkey("$" scID, "Off")
                 HotIf()
+                try Hotkey("~$" scID " up", "Off")
                 HotIfWinActive("ahk_group DNF")
                 try Hotkey("~$" scID, "Off")
                 try Hotkey("~$" scID " up", "Off")
@@ -150,6 +149,9 @@ class ExActionRuntime {
     static ActionUpByScID(scID, *) {
         ctx := this._ctx
         if !IsObject(ctx) {
+            return
+        }
+        if (!ExAction_IsLockScID(scID) && GetKeyState(scID, "P")) {
             return
         }
         if IsObject(ctx.actionHeldScIDs) {
@@ -669,7 +671,7 @@ ExAction_MarkHotkey(hotkeys, scID, blockOriginal) {
 }
 
 ExAction_BlockHotkeyActive(*) {
-    return WinActive("ahk_group DNF") && !GlobalPause_IsPaused()
+    return WinActive("ahk_group DNF") && !GlobalPause_IsPaused() && !ChatOpen_IsOpen()
 }
 
 ExAction_BuildRules(presetName) {
@@ -962,6 +964,11 @@ ExAction_AutoRunSendKey(key) {
         return key
     }
     return Key2NoVkSC(key)
+}
+
+ExAction_IsLockScID(scID) {
+    pk := Format("{:L}", Trim(String(scID)))
+    return pk = "sc3a" || pk = "sc45" || pk = "sc46"
 }
 
 ExAction_BuildScIDs(keys) {

@@ -138,12 +138,7 @@ StartAutoFire(){
     AutoFireThreads_StopAll()
     _AutoFireThreads := []
     nowSelectPreset := ResolvePresetName()
-    runtimeKeys := AutoFire_LoadRuntimeKeys(nowSelectPreset)
-    try enableKeyCount := runtimeKeys.Length
-    catch {
-        enableKeyCount := 0
-    }
-    if (enableKeyCount > 0) {
+    if AutoFire_HasKeyJobs(nowSelectPreset) {
         _AutoFireThreads.Push(SubProcessThread("MainAutoFire", nowSelectPreset))
     }
     StartEx(nowSelectPreset)
@@ -259,6 +254,7 @@ SaveMainPresetState(presetName) {
     SavePreset(presetName, "XiuLuoState", MainGetCtrl("XiuLuo").Value)
     SavePreset(presetName, "AutoRunState", MainGetCtrl("AutoRun").Value)
     SavePreset(presetName, "ComboState", MainGetCtrl("Combo").Value)
+    SavePreset(presetName, "MultiKeyState", MainGetCtrl("MultiKey").Value)
     SaveConfig("AutoPresetsEnabled", MainGetCtrl("AutoPresets").Value ? 1 : 0)
     try {
         SaveAutoFireGlobalIntervalMs(MainGetCtrl("AutoFireIntervalMs").Text)

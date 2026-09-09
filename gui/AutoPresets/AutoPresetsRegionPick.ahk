@@ -263,8 +263,11 @@ PresetRegionPickOpen(kind := "skill") {
     gAutoPresetsRegionPickGui.Show("Hide w200 h90")
     PresetRegionPickLayoutHint(gAutoPresetsRegionPickGui, 0, 200, 90)
     hwnd := gAutoPresetsRegionPickGui.Hwnd
-    if (kind = "dungeon") {
-        r := AutoPresets_ResolveRegion(ParseAutoPresetDungeonRegion())
+    if (kind = "chat") {
+        stored := ParseAutoPresetChatRegion()
+        r := (IsObject(stored) && stored.Has("mode") && stored["mode"] = "clientRatio")
+            ? AutoPresets_ResolveRegion(stored)
+            : AutoPresets_DefaultChatRegion()
     } else if (kind = "longzhan") {
         stored := LongZhan_ParseRegion()
         r := (IsObject(stored) && stored.Has("mode") && stored["mode"] = "clientRatio")
@@ -373,8 +376,8 @@ PresetRegionPickOk(*) {
     h := cr["h"]
     kind := gAutoPresetsRegionPickKind
     try {
-        if (kind = "dungeon") {
-            SaveAutoPresetDungeonRegion(x, y, w, h)
+        if (kind = "chat") {
+            SaveAutoPresetChatRegion(x, y, w, h)
         } else if (kind = "longzhan") {
             LongZhan_SaveRegion(x, y, w, h)
         } else {
@@ -384,12 +387,13 @@ PresetRegionPickOk(*) {
         MsgBox(e.Message,, "Icon!")
         return
     }
+    PresetRegionPickClose()
+    Sleep(50)
     if (kind = "longzhan") {
         try LongZhanAfterRegionPick()
     } else {
         try AutoPresetsAfterRegionPick(kind)
     }
-    PresetRegionPickClose()
 }
 
 PresetRegionPickCancel(*) {

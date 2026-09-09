@@ -123,14 +123,8 @@ MainBuildKeyboardPanel() {
     versionY := MainKeyLayoutData.TopRowVersionY()
     versionW := MainKeyLayoutData.VersionWidth()
     versionH := MainKeyLayoutData.TopRowVersionHeight()
-    lineH := 12
-    lineGap := 2
-    textBlockH := lineH * 2 + lineGap
-    line1Y := versionY + Floor((versionH - textBlockH) / 2)
-    line2Y := line1Y + lineH + lineGap
     UiSetDefaultFont(gMainGui, "s8 " UiTheme["MutedColor"])
-    gMainGui.Add("Text", UiRect(versionX, line1Y, versionW, lineH, "+Center +0x200"), MainText["VersionPrefix"] __Version)
-    gMainGui.Add("Text", UiRect(versionX, line2Y, versionW, lineH, "+Center +0x200"), MainText["OriginalAuthor"])
+    gMainGui.Add("Text", UiRect(versionX, versionY, versionW, versionH, "+Center +0x200"), MainText["VersionPrefix"] __Version)
 
     UiButton(gMainCtrls, gMainGui, "MainClear", UiRect(
         MainKeyLayoutData.TopRowClearX(),
@@ -187,7 +181,7 @@ MainBuildFeaturePanel() {
     rowH := MainLayout.ExRowHeight()
     y0 := MainLayout.ExRowTop()
 
-    for name in ["LvRen", "GuanYu", "JianZong", "ZhanFa", "PetSkill", "XiuLuo", "AutoRun", "Combo", "AutoPresets"] {
+    for name in ["LvRen", "GuanYu", "JianZong", "ZhanFa", "PetSkill", "XiuLuo", "AutoRun", "Combo", "MultiKey", "AutoPresets"] {
         MainAdd("CheckBox", "v" name " Hidden x-2000 y-2000 w1 h1 -TabStop")
     }
 
@@ -196,13 +190,14 @@ MainBuildFeaturePanel() {
         ["LvRen", MainText["LvRen"], MainLvRen, MainLayout.ExLeftColumnX(), MainLayout.ExLeftLinkWidth()],
         ["GuanYu", MainText["GuanYu"], MainGuanYu, MainLayout.ExLeftColumnX(), MainLayout.ExLeftLinkWidth()],
         ["ZhanFa", MainText["ZhanFa"], MainZhanFa, MainLayout.ExLeftColumnX(), MainLayout.ExLeftLinkWidth()],
-        ["XiuLuo", MainText["XiuLuo"], MainXiuLuo, MainLayout.ExLeftColumnX(), MainLayout.ExLeftLinkWidth()]
+        ["XiuLuo", MainText["XiuLuo"], MainXiuLuo, MainLayout.ExLeftColumnX(), MainLayout.ExLeftLinkWidth()],
+        ["JianZong", MainText["JianZong"], MainJianZong, MainLayout.ExLeftColumnX(), MainLayout.ExLeftLinkWidth()]
     ]
     rightRows := [
-        ["JianZong", MainText["JianZong"], MainJianZong, MainLayout.ExRightColumnX(), MainLayout.ExRightLinkWidth()],
         ["PetSkill", MainText["PetSkill"], MainPetSkill, MainLayout.ExRightColumnX(), MainLayout.ExRightLinkWidth()],
         ["AutoRun", MainText["AutoRun"], MainAutoRun, MainLayout.ExRightColumnX(), MainLayout.ExRightLinkWidth()],
-        ["Combo", MainText["Combo"], MainCombo, MainLayout.ExRightColumnX(), MainLayout.ExRightLinkWidth()]
+        ["Combo", MainText["Combo"], MainCombo, MainLayout.ExRightColumnX(), MainLayout.ExRightLinkWidth()],
+        ["MultiKey", MainText["MultiKey"], MainMultiKey, MainLayout.ExRightColumnX(), MainLayout.ExRightLinkWidth()]
     ]
     for i, item in leftRows {
         rowY := y0 + (i - 1) * rowH
@@ -489,6 +484,7 @@ MainLoadEx() {
     MainGetCtrl("XiuLuo").Value := LoadPreset(GetNowSelectPreset(), "XiuLuoState", false)
     MainGetCtrl("AutoRun").Value := LoadPreset(GetNowSelectPreset(), "AutoRunState", false)
     MainGetCtrl("Combo").Value := LoadPreset(GetNowSelectPreset(), "ComboState", false)
+    MainGetCtrl("MultiKey").Value := LoadPreset(GetNowSelectPreset(), "MultiKeyState", false)
     MainGetCtrl("AutoPresets").Value := AutoPresets_LoadEnabledGlobal() ? 1 : 0
     MainSyncKeyIntervalBars()
     MainExSwitchPaintAll()
@@ -532,6 +528,10 @@ MainAutoRun(*) {
 
 MainCombo(*) {
     ShowGuiCombo()
+}
+
+MainMultiKey(*) {
+    ShowGuiMultiKey()
 }
 
 MainChangePresetByList(*) {
